@@ -113,22 +113,11 @@ const App: React.FC = () => {
         const nextIndex = (currentKeyframeIndex + 1) % keyframes.length;
         const nextKeyframe = keyframes[nextIndex];
 
-        // Pose Interpolation
-        const interpolatedPose: SkeletonState = {} as SkeletonState;
-        Object.keys(currentKeyframe.pose).forEach((key) => {
-            const k = key as BodyPartType;
-            const startAngle = currentKeyframe.pose[k];
-            const endAngle = nextKeyframe.pose[k];
-            interpolatedPose[k] = startAngle + (endAngle - startAngle) * progress;
-        });
-        setCurrentPose(interpolatedPose);
-
-        // Prop Interpolation
-        setProps(currentProps => currentProps.map(p => {
+        // 1. Calculate Interpolated Props first (needed for IK)
+        const nextProps = props.map(p => {
             const startTr = currentKeyframe.propTransforms[p.id] || { 
                 translateX: p.translateX, translateY: p.translateY, rotation: p.rotation, scaleX: p.scaleX, scaleY: p.scaleY 
             };
-            // If next frame is missing the prop transform, use the start transform (no motion)
             const endTr = nextKeyframe.propTransforms[p.id] || startTr;
 
             return {
@@ -139,7 +128,50 @@ const App: React.FC = () => {
                 scaleX: startTr.scaleX + (endTr.scaleX - startTr.scaleX) * progress,
                 scaleY: startTr.scaleY + (endTr.scaleY - startTr.scaleY) * progress,
             };
-        }));
+        });
+
+        // 2. Basic Pose Interpolation
+        const interpolatedPose: SkeletonState = {} as SkeletonState;
+        Object.keys(currentKeyframe.pose).forEach((key) => {
+            const k = key as BodyPartType;
+            const startAngle = currentKeyframe.pose[k];
+            const endAngle = nextKeyframe.pose[k];
+            interpolatedPose[k] = startAngle + (endAngle - startAngle) * progress;
+        });
+
+        // 3. Apply IK Constraints (Fix: Ensure hands stay attached during animation)
+        Object.entries(attachments).forEach(([boneId, info]) => {
+            const attachedProp = nextProps.find(p => p.id === info.propId);
+            if (attachedProp) {
+                const snapPoint = attachedProp.snapPoints.find(sp => sp.id === info.snapPointId);
+                if (snapPoint) {
+                    // Calculate exact global position of snap point on the *interpolated* prop
+                    const targetGlobal = transformPoint(snapPoint.x, snapPoint.y, attachedProp);
+
+                    // Solve Position IK
+                    const chain = IK_CHAINS[boneId];
+                    if (chain) {
+                        const ikResult = solveTwoBoneIK(chain.upper, chain.lower, targetGlobal, interpolatedPose);
+                        if (ikResult) {
+                            Object.assign(interpolatedPose, ikResult);
+                        }
+                    }
+
+                    // Solve Rotation Constraint
+                    const handBoneDef = SKELETON_DEF.find(b => b.id === boneId);
+                    if(handBoneDef && handBoneDef.parentId) {
+                          const parentGlobal = getGlobalTransform(handBoneDef.parentId, interpolatedPose);
+                          const offset = info.rotationOffset || 0;
+                          const targetHandGlobal = attachedProp.rotation + offset; 
+                          const targetHandLocal = normalizeAngle(targetHandGlobal - parentGlobal.angle);
+                          interpolatedPose[boneId as BodyPartType] = targetHandLocal;
+                    }
+                }
+            }
+        });
+
+        setCurrentPose(interpolatedPose);
+        setProps(nextProps);
 
         animationFrame = requestAnimationFrame(animate);
       } else {
@@ -155,7 +187,7 @@ const App: React.FC = () => {
     }
 
     return () => cancelAnimationFrame(animationFrame);
-  }, [isPlaying, keyframes]);
+  }, [isPlaying, keyframes, attachments]); // Added attachments to dependency
 
 
   // --- Handlers ---

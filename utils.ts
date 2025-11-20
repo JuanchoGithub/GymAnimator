@@ -232,121 +232,157 @@ export const syncDumbbells = (
 export const exportAnimation = (
     keyframes: Keyframe[], 
     props: GymProp[],
-    attachments: Record<string, { propId: string, snapPointId: string, rotationOffset: number }>
+    attachments: Record<string, { propId: string, snapPointId: string, rotationOffset: number }>,
+    mode: 'accurate' | 'interpolated' = 'accurate'
 ) => {
     let css = '';
     const totalDuration = keyframes.reduce((sum, k) => sum + k.duration, 0);
     
-    // Baking Configuration
-    const SAMPLE_RATE = 30; // ms (approx 33fps) for smooth IK approximation in CSS
     const bakedFrames: { time: number; pose: SkeletonState; props: Record<string, PropTransform> }[] = [];
 
-    // --- BAKE ANIMATION ---
-    // We step through the timeline, interpolate everything, solve IK, and store the result.
-    let currentTime = 0;
-    
-    while (currentTime <= totalDuration) {
-        // 1. Find active keyframes
-        let accumulated = 0;
-        let activeIndex = 0;
-        // Loop to find which segment we are in
-        for(let i=0; i<keyframes.length; i++) {
-            if (currentTime < accumulated + keyframes[i].duration) {
-                activeIndex = i;
-                break;
-            }
-            accumulated += keyframes[i].duration;
-            // Handle the exact end of the timeline falling into the last frame
-            if (i === keyframes.length - 1 && currentTime >= accumulated) {
-                activeIndex = i;
-            }
-        }
-
-        const currentKeyframe = keyframes[activeIndex];
-        // Loop back to 0 for interpolation if at the last frame
-        const nextKeyframe = keyframes[(activeIndex + 1) % keyframes.length];
+    if (mode === 'accurate') {
+        // --- MODE: ACCURATE (Baking) ---
+        // We step through the timeline at a high sample rate, interpolate everything, 
+        // solve IK, and store the result. This creates heavy but perfect animations.
         
-        // Time within current frame
-        const timeInFrame = currentTime - accumulated;
-        // If at the very end, progress is 1 relative to last frame, or 0 relative to first.
-        // To keep loop smooth, we treat >totalDuration as wrap.
-        const progress = Math.min(1, Math.max(0, timeInFrame / currentKeyframe.duration));
-
-        // 2. Interpolate Props
-        const interpolatedProps: Record<string, PropTransform> = {};
-        props.forEach(p => {
-            const startTr = currentKeyframe.propTransforms[p.id] || { 
-                translateX: p.translateX, translateY: p.translateY, rotation: p.rotation, scaleX: p.scaleX, scaleY: p.scaleY 
-            };
-            const endTr = nextKeyframe.propTransforms[p.id] || startTr;
-
-            interpolatedProps[p.id] = {
-                translateX: startTr.translateX + (endTr.translateX - startTr.translateX) * progress,
-                translateY: startTr.translateY + (endTr.translateY - startTr.translateY) * progress,
-                rotation: startTr.rotation + (endTr.rotation - startTr.rotation) * progress,
-                scaleX: startTr.scaleX + (endTr.scaleX - startTr.scaleX) * progress,
-                scaleY: startTr.scaleY + (endTr.scaleY - startTr.scaleY) * progress,
-            };
-        });
-
-        // 3. Interpolate Pose (Linear)
-        const interpolatedPose: SkeletonState = {} as SkeletonState;
-        Object.keys(currentKeyframe.pose).forEach((key) => {
-            const k = key as BodyPartType;
-            const startAngle = currentKeyframe.pose[k];
-            const endAngle = nextKeyframe.pose[k];
-            interpolatedPose[k] = startAngle + (endAngle - startAngle) * progress;
-        });
-
-        // 4. Apply IK Constraints (The Baking Magic)
-        Object.entries(attachments).forEach(([boneId, info]) => {
-            const pTransform = interpolatedProps[info.propId];
-            const originalProp = props.find(p => p.id === info.propId);
-            
-            if (originalProp && pTransform) {
-                // Merge static data (snapPoints) with interpolated transform
-                const tempProp = { ...originalProp, ...pTransform };
-                const snapPoint = tempProp.snapPoints.find(sp => sp.id === info.snapPointId);
-                
-                if (snapPoint) {
-                    const targetGlobal = transformPoint(snapPoint.x, snapPoint.y, tempProp);
-                    
-                    // Solve Position IK
-                    const chain = IK_CHAINS[boneId];
-                    if (chain) {
-                        const ikResult = solveTwoBoneIK(chain.upper, chain.lower, targetGlobal, interpolatedPose);
-                        if (ikResult) Object.assign(interpolatedPose, ikResult);
-                    }
-                    
-                    // Solve Rotation Constraint
-                    const handBoneDef = getBoneDef(boneId as BodyPartType);
-                    if(handBoneDef && handBoneDef.parentId) {
-                          const parentGlobal = getGlobalTransform(handBoneDef.parentId, interpolatedPose);
-                          const offset = info.rotationOffset || 0;
-                          const targetHandGlobal = tempProp.rotation + offset; 
-                          const targetHandLocal = normalizeAngle(targetHandGlobal - parentGlobal.angle);
-                          interpolatedPose[boneId as BodyPartType] = targetHandLocal;
-                    }
+        const SAMPLE_RATE = 30; // ms (approx 33fps)
+        let currentTime = 0;
+        
+        while (currentTime <= totalDuration) {
+            // 1. Find active keyframes
+            let accumulated = 0;
+            let activeIndex = 0;
+            for(let i=0; i<keyframes.length; i++) {
+                if (currentTime < accumulated + keyframes[i].duration) {
+                    activeIndex = i;
+                    break;
+                }
+                accumulated += keyframes[i].duration;
+                if (i === keyframes.length - 1 && currentTime >= accumulated) {
+                    activeIndex = i;
                 }
             }
-        });
 
-        bakedFrames.push({
-            time: currentTime,
-            pose: interpolatedPose,
-            props: interpolatedProps
-        });
+            const currentKeyframe = keyframes[activeIndex];
+            const nextKeyframe = keyframes[(activeIndex + 1) % keyframes.length];
+            const timeInFrame = currentTime - accumulated;
+            const progress = Math.min(1, Math.max(0, timeInFrame / currentKeyframe.duration));
 
-        // Increment
-        if (currentTime >= totalDuration) break;
-        currentTime += SAMPLE_RATE;
-        if (currentTime > totalDuration && currentTime - SAMPLE_RATE < totalDuration) {
-            // Ensure we capture the final frame state exactly
-            currentTime = totalDuration;
+            // 2. Interpolate Props
+            const interpolatedProps: Record<string, PropTransform> = {};
+            props.forEach(p => {
+                const startTr = currentKeyframe.propTransforms[p.id] || { 
+                    translateX: p.translateX, translateY: p.translateY, rotation: p.rotation, scaleX: p.scaleX, scaleY: p.scaleY 
+                };
+                const endTr = nextKeyframe.propTransforms[p.id] || startTr;
+
+                interpolatedProps[p.id] = {
+                    translateX: startTr.translateX + (endTr.translateX - startTr.translateX) * progress,
+                    translateY: startTr.translateY + (endTr.translateY - startTr.translateY) * progress,
+                    rotation: startTr.rotation + (endTr.rotation - startTr.rotation) * progress,
+                    scaleX: startTr.scaleX + (endTr.scaleX - startTr.scaleX) * progress,
+                    scaleY: startTr.scaleY + (endTr.scaleY - startTr.scaleY) * progress,
+                };
+            });
+
+            // 3. Interpolate Pose (Linear)
+            const interpolatedPose: SkeletonState = {} as SkeletonState;
+            Object.keys(currentKeyframe.pose).forEach((key) => {
+                const k = key as BodyPartType;
+                const startAngle = currentKeyframe.pose[k];
+                const endAngle = nextKeyframe.pose[k];
+                interpolatedPose[k] = startAngle + (endAngle - startAngle) * progress;
+            });
+
+            // 4. Apply IK Constraints
+            Object.entries(attachments).forEach(([boneId, info]) => {
+                const pTransform = interpolatedProps[info.propId];
+                const originalProp = props.find(p => p.id === info.propId);
+                
+                if (originalProp && pTransform) {
+                    const tempProp = { ...originalProp, ...pTransform };
+                    const snapPoint = tempProp.snapPoints.find(sp => sp.id === info.snapPointId);
+                    
+                    if (snapPoint) {
+                        const targetGlobal = transformPoint(snapPoint.x, snapPoint.y, tempProp);
+                        const chain = IK_CHAINS[boneId];
+                        if (chain) {
+                            const ikResult = solveTwoBoneIK(chain.upper, chain.lower, targetGlobal, interpolatedPose);
+                            if (ikResult) Object.assign(interpolatedPose, ikResult);
+                        }
+                        const handBoneDef = getBoneDef(boneId as BodyPartType);
+                        if(handBoneDef && handBoneDef.parentId) {
+                              const parentGlobal = getGlobalTransform(handBoneDef.parentId, interpolatedPose);
+                              const offset = info.rotationOffset || 0;
+                              const targetHandGlobal = tempProp.rotation + offset; 
+                              const targetHandLocal = normalizeAngle(targetHandGlobal - parentGlobal.angle);
+                              interpolatedPose[boneId as BodyPartType] = targetHandLocal;
+                        }
+                    }
+                }
+            });
+
+            bakedFrames.push({
+                time: currentTime,
+                pose: interpolatedPose,
+                props: interpolatedProps
+            });
+
+            if (currentTime >= totalDuration) break;
+            currentTime += SAMPLE_RATE;
+            if (currentTime > totalDuration && currentTime - SAMPLE_RATE < totalDuration) {
+                currentTime = totalDuration;
+            }
         }
+
+    } else {
+        // --- MODE: INTERPOLATED (Optimization) ---
+        // We only create a keyframe for each user-defined keyframe.
+        // This relies on the browser's linear interpolation.
+        // File size is much smaller, but IK arcs (e.g. hands following a barbell in a curve)
+        // might drift slightly between keyframes.
+        
+        let accumulated = 0;
+        keyframes.forEach(kf => {
+             // Construct prop transforms for this keyframe
+             const currentProps: Record<string, PropTransform> = {};
+             props.forEach(p => {
+                 currentProps[p.id] = kf.propTransforms[p.id] || {
+                      translateX: p.translateX,
+                      translateY: p.translateY,
+                      rotation: p.rotation,
+                      scaleX: p.scaleX,
+                      scaleY: p.scaleY
+                 };
+             });
+             
+             bakedFrames.push({
+                 time: accumulated,
+                 pose: kf.pose,
+                 props: currentProps
+             });
+             accumulated += kf.duration;
+        });
+
+        // Add Loop frame (First frame data at end time)
+        const firstFrameProps: Record<string, PropTransform> = {};
+        props.forEach(p => {
+             firstFrameProps[p.id] = keyframes[0].propTransforms[p.id] || {
+                  translateX: p.translateX,
+                  translateY: p.translateY,
+                  rotation: p.rotation,
+                  scaleX: p.scaleX,
+                  scaleY: p.scaleY
+             };
+        });
+        bakedFrames.push({
+             time: totalDuration,
+             pose: keyframes[0].pose,
+             props: firstFrameProps
+        });
     }
 
-    // --- GENERATE CSS FROM BAKED FRAMES ---
+    // --- GENERATE CSS FROM FRAMES ---
     
     // 1. BONE ANIMATIONS
     SKELETON_DEF.forEach(bone => {
@@ -393,6 +429,6 @@ export const exportAnimation = (
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'gym-animation.svg';
+    a.download = `gym-animation-${mode}.svg`;
     a.click();
 };

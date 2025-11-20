@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isMirrorMode, setIsMirrorMode] = useState(false);
   const [isTimelineExpanded, setIsTimelineExpanded] = useState(true);
+  const [exportMode, setExportMode] = useState<'accurate' | 'interpolated'>('accurate');
 
   // Map of Hand Bone ID -> Attachment Info
   const [attachments, setAttachments] = useState<Record<string, { propId: string, snapPointId: string, rotationOffset: number }>>({});
@@ -626,7 +627,7 @@ const App: React.FC = () => {
       updateKeyframeProps(updatedProps);
   };
 
-  const handleExport = () => exportAnimation(keyframes, props, attachments);
+  const handleExport = () => exportAnimation(keyframes, props, attachments, exportMode);
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-900 text-gray-100 overflow-hidden">
@@ -634,6 +635,8 @@ const App: React.FC = () => {
         isMirrorMode={isMirrorMode}
         setIsMirrorMode={setIsMirrorMode}
         onExport={handleExport}
+        exportMode={exportMode}
+        setExportMode={setExportMode}
       />
 
       <div className="flex-1 flex overflow-hidden">

@@ -4,9 +4,17 @@ interface HeaderProps {
   isMirrorMode: boolean;
   setIsMirrorMode: (val: boolean) => void;
   onExport: () => void;
+  exportMode: 'accurate' | 'interpolated';
+  setExportMode: (mode: 'accurate' | 'interpolated') => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ isMirrorMode, setIsMirrorMode, onExport }) => {
+export const Header: React.FC<HeaderProps> = ({ 
+  isMirrorMode, 
+  setIsMirrorMode, 
+  onExport,
+  exportMode,
+  setExportMode
+}) => {
   return (
     <header className="h-14 bg-gray-800 border-b border-gray-700 flex items-center px-4 justify-between flex-shrink-0">
       <div className="flex items-center space-x-2">
@@ -26,9 +34,22 @@ export const Header: React.FC<HeaderProps> = ({ isMirrorMode, setIsMirrorMode, o
               <span className={isMirrorMode ? "text-yellow-400 font-semibold" : "text-gray-400"}>Mirror Mode</span>
           </label>
 
+          {/* Export Mode Selector */}
+          <div className="flex items-center bg-gray-900 rounded border border-gray-700 px-2 py-1.5">
+            <span className="text-[10px] text-gray-400 uppercase font-bold mr-2 tracking-wider">Export</span>
+            <select 
+                value={exportMode} 
+                onChange={(e) => setExportMode(e.target.value as 'accurate' | 'interpolated')}
+                className="bg-transparent text-sm text-white outline-none border-none cursor-pointer font-medium"
+            >
+                <option value="accurate" className="bg-gray-800">Accurate (IK Baked)</option>
+                <option value="interpolated" className="bg-gray-800">Interpolated (Small)</option>
+            </select>
+          </div>
+
           <button 
               onClick={onExport}
-              className="bg-yellow-500 hover:bg-yellow-400 text-gray-900 px-4 py-1.5 rounded font-semibold text-sm flex items-center transition-colors"
+              className="bg-yellow-500 hover:bg-yellow-400 text-gray-900 px-4 py-1.5 rounded font-semibold text-sm flex items-center transition-colors shadow-lg shadow-yellow-500/20"
           >
               <span className="material-icons-round text-sm mr-2">download</span> Export SVG
           </button>

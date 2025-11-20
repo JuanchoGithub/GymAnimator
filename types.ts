@@ -71,4 +71,9 @@ export interface GymProp {
   attachedTo: BodyPartType | null; // Deprecated/Legacy, using App state for multi-hand
   snapPoints: SnapPoint[];
   color: string;
+  stroke?: string;
+  strokeWidth?: number;
+  layer?: 'front' | 'back';
 }
+
+export type ViewMode = 'FRONT' | 'BACK';

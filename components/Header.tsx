@@ -1,4 +1,5 @@
 import React from 'react';
+import { ViewMode } from '../types';
 
 interface HeaderProps {
   isMirrorMode: boolean;
@@ -6,6 +7,8 @@ interface HeaderProps {
   onExport: () => void;
   exportMode: 'accurate' | 'interpolated';
   setExportMode: (mode: 'accurate' | 'interpolated') => void;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -13,7 +16,9 @@ export const Header: React.FC<HeaderProps> = ({
   setIsMirrorMode, 
   onExport,
   exportMode,
-  setExportMode
+  setExportMode,
+  viewMode,
+  setViewMode
 }) => {
   return (
     <header className="h-14 bg-gray-800 border-b border-gray-700 flex items-center px-4 justify-between flex-shrink-0">
@@ -33,6 +38,22 @@ export const Header: React.FC<HeaderProps> = ({
               />
               <span className={isMirrorMode ? "text-yellow-400 font-semibold" : "text-gray-400"}>Mirror Mode</span>
           </label>
+
+          {/* View Mode Toggle */}
+          <div className="flex bg-gray-900 rounded border border-gray-700 p-0.5">
+              <button 
+                onClick={() => setViewMode('FRONT')}
+                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${viewMode === 'FRONT' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+              >
+                  FRONT
+              </button>
+              <button 
+                onClick={() => setViewMode('BACK')}
+                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${viewMode === 'BACK' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+              >
+                  BACK
+              </button>
+          </div>
 
           {/* Export Mode Selector */}
           <div className="flex items-center bg-gray-900 rounded border border-gray-700 px-2 py-1.5">

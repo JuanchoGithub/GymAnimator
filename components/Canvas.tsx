@@ -1,6 +1,6 @@
 import React from 'react';
 import Character from './Character';
-import { GymProp, SkeletonState, BodyPartType } from '../types';
+import { GymProp, SkeletonState, BodyPartType, ViewMode } from '../types';
 
 interface CanvasProps {
     svgRef: React.RefObject<SVGSVGElement>;
@@ -12,6 +12,8 @@ interface CanvasProps {
     dragState: { isDragging: boolean; type: 'BONE' | 'PROP'; id: string } | null;
     isPlaying: boolean;
     isMirrorMode: boolean;
+    viewMode: ViewMode;
+    armsInFront: boolean;
     onBoneMouseDown: (id: BodyPartType, e: React.MouseEvent) => void;
     onPropMouseDown: (e: React.MouseEvent, prop: GymProp) => void;
     onSvgMouseMove: (e: React.MouseEvent) => void;
@@ -29,27 +31,84 @@ export const Canvas: React.FC<CanvasProps> = ({
     dragState,
     isPlaying,
     isMirrorMode,
+    viewMode,
+    armsInFront,
     onBoneMouseDown,
     onPropMouseDown,
     onSvgMouseMove,
     onSvgMouseUp,
     onClearSelection
 }) => {
-  return (
-    <div className="flex-1 bg-[#111827] relative flex items-center justify-center overflow-hidden">
-       {/* Grid Background */}
-       <div className="absolute inset-0 opacity-10 pointer-events-none"
-            style={{ backgroundImage: 'radial-gradient(#4b5563 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
-       </div>
+  
+  const renderProp = (prop: GymProp) => {
+      const isSelected = selectedPropId === prop.id;
+      return (
+        <g 
+            key={prop.id} 
+            id={`prop-${prop.id}`}
+            transform={`translate(${prop.translateX}, ${prop.translateY}) rotate(${prop.rotation}) scale(${prop.scaleX}, ${prop.scaleY})`}
+            onMouseDown={(e) => onPropMouseDown(e, prop)}
+            style={{ cursor: dragState?.isDragging && isSelected ? 'grabbing' : 'grab' }}
+            className="group"
+        >
+            {/* Halo/Selection Indicator */}
+            {isSelected && (
+                <path 
+                    d={prop.path} 
+                    fill="none" 
+                    stroke="#facc15" 
+                    strokeWidth="4" 
+                    opacity="0.5"
+                />
+            )}
+            
+            {/* The Prop */}
+            <path 
+                d={prop.path} 
+                fill={prop.color} 
+                stroke={prop.stroke || "none"}
+                strokeWidth={prop.strokeWidth || 0}
+                className="transition-opacity hover:opacity-90"
+            />
 
-       {/* SVG Canvas */}
-       <div className="bg-white/5 border border-white/10 rounded-lg shadow-2xl backdrop-blur-sm">
+            {/* Snap Points Visual (Visible if selected or dragging hand) */}
+            {(isSelected || (dragState?.type === 'BONE' && dragState.id.includes('HAND'))) && prop.snapPoints?.map(sp => (
+                <circle 
+                    key={sp.id}
+                    cx={sp.x}
+                    cy={sp.y}
+                    r={4 / prop.scaleX} // Counter-scale radius
+                    fill="#ef4444"
+                    opacity="0.5"
+                    className="pointer-events-none"
+                />
+            ))}
+
+            {/* Pivot Point (visible when selected) */}
+            {isSelected && (
+                <circle r="3" fill="#facc15" stroke="black" strokeWidth="1" />
+            )}
+        </g>
+      );
+  };
+
+  return (
+    <div className="flex-1 bg-gray-900 relative flex items-center justify-center overflow-hidden">
+       
+       {/* SVG Canvas Container */}
+       <div className="bg-gray-200 border-4 border-gray-700 rounded-lg shadow-2xl relative overflow-hidden">
+            
+            {/* Grid Background (Inside the 'paper') */}
+            <div className="absolute inset-0 pointer-events-none opacity-30"
+                style={{ backgroundImage: 'radial-gradient(#6b7280 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+            </div>
+
             <svg 
                 ref={svgRef}
                 width="400" 
                 height="500" 
                 viewBox="0 0 400 500"
-                className="select-none"
+                className="select-none relative z-10"
                 style={{ cursor: dragState?.isDragging ? 'grabbing' : 'default' }}
                 id="export-target"
                 onMouseDown={onClearSelection}
@@ -67,73 +126,30 @@ export const Canvas: React.FC<CanvasProps> = ({
                     </filter>
                 </defs>
 
+                {/* Render Props Layer (Back) */}
+                {props.filter(p => p.layer === 'back').map(renderProp)}
+
                 {/* Character */}
                 <Character 
                     pose={currentPose}
                     selectedBoneId={selectedBoneId}
                     onSelectBone={onBoneMouseDown}
+                    viewMode={viewMode}
+                    armsInFront={armsInFront}
                 />
 
-                {/* Render Props Layer (Front) */}
-                {props.map(prop => {
-                    const isSelected = selectedPropId === prop.id;
-                    return (
-                        <g 
-                            key={prop.id} 
-                            id={`prop-${prop.id}`}
-                            transform={`translate(${prop.translateX}, ${prop.translateY}) rotate(${prop.rotation}) scale(${prop.scaleX}, ${prop.scaleY})`}
-                            onMouseDown={(e) => onPropMouseDown(e, prop)}
-                            style={{ cursor: dragState?.isDragging && isSelected ? 'grabbing' : 'grab' }}
-                            className="group"
-                        >
-                            {/* Halo/Selection Indicator */}
-                            {isSelected && (
-                                <path 
-                                    d={prop.path} 
-                                    fill="none" 
-                                    stroke="#facc15" 
-                                    strokeWidth="4" 
-                                    opacity="0.5"
-                                />
-                            )}
-                            
-                            {/* The Prop */}
-                            <path 
-                                d={prop.path} 
-                                fill={prop.color} 
-                                stroke={isSelected ? "white" : "none"}
-                                strokeWidth={isSelected ? 1 : 0}
-                                className="transition-opacity hover:opacity-90"
-                            />
+                {/* Render Props Layer (Front - Default) */}
+                {props.filter(p => p.layer !== 'back').map(renderProp)}
 
-                            {/* Snap Points Visual (Visible if selected or dragging hand) */}
-                            {(isSelected || (dragState?.type === 'BONE' && dragState.id.includes('HAND'))) && prop.snapPoints?.map(sp => (
-                                <circle 
-                                    key={sp.id}
-                                    cx={sp.x}
-                                    cy={sp.y}
-                                    r={4 / prop.scaleX} // Counter-scale radius
-                                    fill="#ef4444"
-                                    opacity="0.5"
-                                    className="pointer-events-none"
-                                />
-                            ))}
-
-                            {/* Pivot Point (visible when selected) */}
-                            {isSelected && (
-                                <circle r="3" fill="#facc15" stroke="black" strokeWidth="1" />
-                            )}
-                        </g>
-                    );
-                })}
             </svg>
        </div>
        
-       <div className="absolute bottom-4 right-4 text-gray-500 text-xs font-mono flex flex-col items-end space-y-1 pointer-events-none">
+       <div className="absolute bottom-4 right-4 text-gray-500 text-xs font-mono flex flex-col items-end space-y-1 pointer-events-none select-none">
            <span>{isPlaying ? 'PLAYING' : 'EDIT MODE'}</span>
            {dragState?.isDragging && <span className="text-yellow-500 font-bold">DRAGGING</span>}
            {Object.keys(attachments).length > 0 && <span className="text-green-400">ATTACHED</span>}
            {isMirrorMode && <span className="text-blue-400">MIRROR: ON</span>}
+           <span className="text-gray-400">VIEW: {viewMode}</span>
        </div>
     </div>
   );

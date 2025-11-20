@@ -266,7 +266,6 @@ export const INITIAL_POSE: SkeletonState = SKELETON_DEF.reduce((acc, bone) => {
 export const SAMPLE_PROPS: Omit<GymProp, 'id' | 'translateX' | 'translateY' | 'attachedTo'>[] = [
   {
     name: 'Barbell',
-    // Made significantly wider (from +/-120 to +/-180)
     path: 'M-180,-4 L180,-4 L180,4 L-180,4 Z M-140,-35 L-130,-35 L-130,35 L-140,35 Z M-152,-35 L-142,-35 L-142,35 L-152,35 Z M130,-35 L140,-35 L140,35 L130,35 Z M142,-35 L152,-35 L152,35 L142,35 Z M-125,-6 L-122,-6 L-122,6 L-125,6 Z M122,-6 L125,-6 L125,6 L122,6 Z',
     viewBox: "-190 -40 380 80",
     color: "#6b7280",
@@ -285,7 +284,6 @@ export const SAMPLE_PROPS: Omit<GymProp, 'id' | 'translateX' | 'translateY' | 'a
   },
   {
     name: 'Dumbbell',
-    // Made wider (length 60 vs 40) and plates thicker
     path: 'M-30,-3 L30,-3 L30,3 L-30,3 Z M-30,-12 L-15,-12 L-15,12 L-30,12 Z M15,-12 L30,-12 L30,12 L15,12 Z',
     viewBox: "-35 -15 70 30",
     color: "#6b7280",
@@ -296,6 +294,128 @@ export const SAMPLE_PROPS: Omit<GymProp, 'id' | 'translateX' | 'translateY' | 'a
         { id: 'center', name: 'Handle', x: 0, y: 0 },
         { id: 'plate_l', name: 'Plate L', x: -22, y: 0 },
         { id: 'plate_r', name: 'Plate R', x: 22, y: 0 },
+    ]
+  },
+  {
+    name: 'Kettlebell',
+    path: 'M-12,-15 C-12,-25 12,-25 12,-15 V-5 L12,5 A20,20 0 1,1 -12,5 V-5 Z M-12,-5 L12,-5',
+    viewBox: "-25 -30 50 60",
+    color: "#374151",
+    scaleX: 1,
+    scaleY: 1,
+    rotation: 0,
+    snapPoints: [
+      { id: 'handle', name: 'Handle', x: 0, y: -20 },
+      { id: 'body', name: 'Body', x: 0, y: 10 },
+    ]
+  },
+  {
+    name: 'Bench (Flat)',
+    path: 'M-25,-90 L25,-90 L25,90 L-25,90 Z',
+    viewBox: "-30 -100 60 200",
+    color: "#374151",
+    stroke: "#9ca3af",
+    strokeWidth: 2,
+    scaleX: 1,
+    scaleY: 1,
+    rotation: 0,
+    layer: 'back',
+    snapPoints: [
+      { id: 'head', name: 'Head', x: 0, y: -80 },
+      { id: 'center', name: 'Center', x: 0, y: 0 },
+      { id: 'foot', name: 'Foot', x: 0, y: 80 },
+    ]
+  },
+  {
+    name: 'Bench (90°)',
+    path: 'M-25,-20 L25,-20 L25,25 L-25,25 Z M-20,-25 L20,-25 L20,-22 L-20,-22 Z',
+    viewBox: "-30 -30 60 60",
+    color: "#374151",
+    stroke: "#9ca3af",
+    strokeWidth: 2,
+    scaleX: 1,
+    scaleY: 1,
+    rotation: 0,
+    layer: 'back',
+    snapPoints: [
+      { id: 'center', name: 'Seat Center', x: 0, y: 0 },
+    ]
+  },
+  {
+    name: 'Bench (45°)',
+    path: 'M-25,30 L25,30 L25,60 L-25,60 Z M-25,20 L25,20 L25,-80 L-25,-80 Z',
+    viewBox: "-30 -90 60 160",
+    color: "#374151",
+    stroke: "#9ca3af",
+    strokeWidth: 2,
+    scaleX: 1,
+    scaleY: 1,
+    rotation: 0,
+    layer: 'back',
+    snapPoints: [
+      { id: 'head', name: 'Head', x: 0, y: -70 },
+      { id: 'seat', name: 'Seat', x: 0, y: 45 },
+    ]
+  },
+  {
+    name: 'Cable (Linear)',
+    path: 'M0,0 L0,-400 M-40,0 L40,0 L40,6 L-40,6 Z',
+    viewBox: "-50 -400 100 420",
+    color: "#4b5563",
+    stroke: "black",
+    strokeWidth: 4,
+    scaleX: 1,
+    scaleY: 1,
+    rotation: 0,
+    snapPoints: [
+      { id: 'center', name: 'Center', x: 0, y: 3 },
+      { id: 'left', name: 'Left', x: -35, y: 3 },
+      { id: 'right', name: 'Right', x: 35, y: 3 },
+    ]
+  },
+  {
+    name: 'Cable (V-Bar)',
+    path: 'M0,0 L0,-400 M0,0 L-20,25 L-15,28 L0,5 L15,28 L20,25 Z',
+    viewBox: "-30 -400 60 440",
+    color: "#4b5563",
+    stroke: "black",
+    strokeWidth: 4,
+    scaleX: 1,
+    scaleY: 1,
+    rotation: 0,
+    snapPoints: [
+      { id: 'left', name: 'Left Grip', x: -15, y: 20 },
+      { id: 'right', name: 'Right Grip', x: 15, y: 20 },
+    ]
+  },
+  {
+    name: 'Cable (Triangle)',
+    path: 'M0,0 L0,-400 M0,0 L-15,20 L15,20 Z M-15,20 L-15,30 M15,20 L15,30',
+    viewBox: "-20 -400 40 440",
+    color: "#4b5563",
+    stroke: "black",
+    strokeWidth: 4,
+    scaleX: 1,
+    scaleY: 1,
+    rotation: 0,
+    snapPoints: [
+      { id: 'left', name: 'Left Grip', x: -15, y: 25 },
+      { id: 'right', name: 'Right Grip', x: 15, y: 25 },
+    ]
+  },
+  {
+    name: 'Cable (Rope)',
+    path: 'M0,-10 L0,-400 M-5,-10 L5,-10 L5,0 L-5,0 Z M0,0 C5,5 10,20 20,30 M0,0 C-5,5 -10,20 -20,30',
+    viewBox: "-30 -400 60 450",
+    color: "#d1d5db",
+    stroke: "black",
+    strokeWidth: 4,
+    scaleX: 1,
+    scaleY: 1,
+    rotation: 0,
+    snapPoints: [
+      { id: 'left', name: 'Left End', x: -20, y: 30 },
+      { id: 'right', name: 'Right End', x: 20, y: 30 },
     ]
   }
 ];

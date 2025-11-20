@@ -4,7 +4,7 @@ import Timeline from './components/Timeline';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { Canvas } from './components/Canvas';
-import { BodyPartType, Keyframe, SkeletonState, GymProp, PropTransform } from './types';
+import { BodyPartType, Keyframe, SkeletonState, GymProp, PropTransform, ViewMode } from './types';
 import { INITIAL_POSE, SAMPLE_PROPS, SKELETON_DEF, MIRROR_MAPPING, IK_CHAINS } from './constants';
 import { generatePropSvg } from './services/geminiService';
 import { getGlobalTransform, solveTwoBoneIK, toDegrees, normalizeAngle, transformPoint, syncDumbbells, exportAnimation } from './utils';
@@ -29,6 +29,8 @@ const App: React.FC = () => {
   const [isMirrorMode, setIsMirrorMode] = useState(false);
   const [isTimelineExpanded, setIsTimelineExpanded] = useState(true);
   const [exportMode, setExportMode] = useState<'accurate' | 'interpolated'>('accurate');
+  const [viewMode, setViewMode] = useState<ViewMode>('FRONT');
+  const [armsInFront, setArmsInFront] = useState(false);
 
   // Map of Hand Bone ID -> Attachment Info
   const [attachments, setAttachments] = useState<Record<string, { propId: string, snapPointId: string, rotationOffset: number }>>({});
@@ -416,12 +418,6 @@ const App: React.FC = () => {
           setAttachments(newAttachments);
           setKeyframes(prev => prev.map(kf => {
               if (kf.id === currentFrameId) {
-                  // If syncedProps updated, we've already handled it via updateKeyframeProps logic
-                  // But we need to ensure we update the pose too.
-                  // Ideally updateKeyframeProps and this setKeyframes should be merged, but since state updates are batched, 
-                  // we just need to make sure we don't overwrite propTransforms with old data.
-                  // To keep it simple, we rely on the fact that 'syncedProps' is up to date.
-                  
                   const transforms = kf.propTransforms || {};
                   if (syncedProps !== props) {
                       syncedProps.forEach(p => {
@@ -593,38 +589,40 @@ const App: React.FC = () => {
         attachedTo: null,
         rotation: preset.rotation || 0,
         snapPoints: preset.snapPoints || [],
-        color: preset.color
+        color: preset.color,
+        layer: preset.layer,
+        stroke: preset.stroke,
+        strokeWidth: preset.strokeWidth
       };
       registerNewProp(newProp);
   };
 
-  const handleDeleteProp = () => {
-      if (selectedPropId) {
+  const handleDeleteProp = (id?: string) => {
+      const targetId = id || selectedPropId;
+      if (targetId) {
           const newAttachments = { ...attachments };
           Object.keys(newAttachments).forEach(key => {
-              if (newAttachments[key].propId === selectedPropId) {
+              if (newAttachments[key].propId === targetId) {
                   delete newAttachments[key];
               }
           });
           setAttachments(newAttachments);
 
-          setProps(props.filter(p => p.id !== selectedPropId));
-          // Prop remains in keyframe data as junk, or we could clean it up.
-          // For now, not cleaning up keyframes is safer to avoid history issues, but strictly we should:
-          /*
-          setKeyframes(prev => prev.map(kf => {
-              const newTrans = { ...kf.propTransforms };
-              delete newTrans[selectedPropId];
-              return { ...kf, propTransforms: newTrans };
-          }));
-          */
-          setSelectedPropId(null);
+          setProps(props.filter(p => p.id !== targetId));
+          if (selectedPropId === targetId) {
+            setSelectedPropId(null);
+          }
       }
   };
 
   const handlePropUpdate = (updatedProps: GymProp[]) => {
       setProps(updatedProps);
       updateKeyframeProps(updatedProps);
+  };
+
+  const handleSelectProp = (id: string) => {
+      setSelectedPropId(id);
+      setSelectedBoneId(null);
   };
 
   const handleExport = () => exportAnimation(keyframes, props, attachments, exportMode);
@@ -637,6 +635,8 @@ const App: React.FC = () => {
         onExport={handleExport}
         exportMode={exportMode}
         setExportMode={setExportMode}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -645,7 +645,7 @@ const App: React.FC = () => {
             selectedPropId={selectedPropId}
             currentPose={currentPose}
             props={props}
-            setProps={handlePropUpdate} // Use wrapper to sync keyframes
+            setProps={handlePropUpdate} 
             attachments={attachments}
             onRotationChange={handleRotationChange}
             onDetachBone={handleDetachBone}
@@ -656,6 +656,9 @@ const App: React.FC = () => {
             propPrompt={propPrompt}
             setPropPrompt={setPropPrompt}
             isMirrorMode={isMirrorMode}
+            onSelectProp={handleSelectProp}
+            armsInFront={armsInFront}
+            setArmsInFront={setArmsInFront}
         />
 
         <Canvas 
@@ -668,6 +671,8 @@ const App: React.FC = () => {
             dragState={dragState}
             isPlaying={isPlaying}
             isMirrorMode={isMirrorMode}
+            viewMode={viewMode}
+            armsInFront={armsInFront}
             onBoneMouseDown={handleBoneMouseDown}
             onPropMouseDown={handlePropMouseDown}
             onSvgMouseMove={handleSvgMouseMove}

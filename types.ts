@@ -1,0 +1,53 @@
+export enum BodyPartType {
+  ROOT = 'ROOT',
+  HIPS = 'HIPS',
+  HEAD = 'HEAD',
+  TORSO = 'TORSO',
+  UPPER_ARM_L = 'UPPER_ARM_L',
+  LOWER_ARM_L = 'LOWER_ARM_L',
+  HAND_L = 'HAND_L',
+  UPPER_ARM_R = 'UPPER_ARM_R',
+  LOWER_ARM_R = 'LOWER_ARM_R',
+  HAND_R = 'HAND_R',
+  UPPER_LEG_L = 'UPPER_LEG_L',
+  LOWER_LEG_L = 'LOWER_LEG_L',
+  FOOT_L = 'FOOT_L',
+  UPPER_LEG_R = 'UPPER_LEG_R',
+  LOWER_LEG_R = 'LOWER_LEG_R',
+  FOOT_R = 'FOOT_R',
+}
+
+export interface Bone {
+  id: BodyPartType;
+  parentId: BodyPartType | null;
+  name: string;
+  length: number;
+  width: number;
+  color: string;
+  defaultAngle: number; // Degrees relative to parent
+  originX: number; // Pivot X relative to parent
+  originY: number; // Pivot Y relative to parent
+  zIndex: number;
+  shapePath?: string; // Custom SVG path for the body part
+}
+
+// A map of Bone ID to its current rotation angle
+export type SkeletonState = Record<BodyPartType, number>;
+
+export interface Keyframe {
+  id: string;
+  duration: number; // Time to reach this frame (ms)
+  pose: SkeletonState;
+}
+
+export interface GymProp {
+  id: string;
+  name: string;
+  path: string;
+  viewBox: string;
+  scale: number;
+  translateX: number;
+  translateY: number;
+  attachedTo: BodyPartType | null; // If null, it's on the floor/background
+  color: string;
+}

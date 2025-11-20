@@ -1,0 +1,5 @@
+{
+  "name": "GymAnimator",
+  "description": "A specialized SVG skeletal animation tool for creating consistent exercise animations with gym props.",
+  "requestFramePermissions": []
+}

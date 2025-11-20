@@ -260,6 +260,9 @@ export const exportAnimation = (
                 accumulated += keyframes[i].duration;
                 if (i === keyframes.length - 1 && currentTime >= accumulated) {
                     activeIndex = i;
+                    // FIX: accumulated is now end time because of loop increment. 
+                    // Reset it to start time for this last frame calculation.
+                    accumulated -= keyframes[i].duration; 
                 }
             }
 

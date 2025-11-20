@@ -102,14 +102,25 @@ export const solveTwoBoneIK = (
     const theta = Math.atan2(cdy, cdx);
 
     // Bend Direction Logic
-    // We determine bend based on which side of the body the limb is on.
-    // In SVG Screen coords (+Y Down):
-    // Left Arm: Generally bends "Left" (negative angle offset relative to target vector)
-    // Right Arm: Generally bends "Right" (positive angle offset)
     let bendSign = 1;
     
-    if (upperId.includes("_L")) bendSign = -1; 
-    if (upperId.includes("_R")) bendSign = 1;
+    // We need opposite bend directions for Legs vs Arms to look natural.
+    // Legs: Bend Outwards (Knees apart in squat)
+    // Arms: Bend "Down/Back" usually.
+    const isLeg = upperId.includes("LEG");
+
+    if (upperId.includes("_L")) {
+        // Screen Left Limb
+        // Arms: -1 (Elbow points Left/Down)
+        // Legs: 1  (Knee points Left/Out)
+        bendSign = isLeg ? 1 : -1;
+    } 
+    if (upperId.includes("_R")) {
+        // Screen Right Limb
+        // Arms: 1  (Elbow points Right/Down)
+        // Legs: -1 (Knee points Right/Out)
+        bendSign = isLeg ? -1 : 1;
+    }
 
     // Calculate Global Angles (Math Space: Counter-Clockwise)
     const upperGlobalMath = theta + (bendSign * alpha);

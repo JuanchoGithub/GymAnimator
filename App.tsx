@@ -22,6 +22,7 @@ const App: React.FC = () => {
   const [propPrompt, setPropPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isMirrorMode, setIsMirrorMode] = useState(false);
+  const [isTimelineExpanded, setIsTimelineExpanded] = useState(true);
 
   // Dragging State
   const [dragState, setDragState] = useState<{
@@ -370,7 +371,7 @@ const App: React.FC = () => {
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-900 text-gray-100 overflow-hidden">
       {/* Header */}
-      <header className="h-14 bg-gray-800 border-b border-gray-700 flex items-center px-4 justify-between">
+      <header className="h-14 bg-gray-800 border-b border-gray-700 flex items-center px-4 justify-between flex-shrink-0">
         <div className="flex items-center space-x-2">
             <span className="material-icons-round text-yellow-500">fitness_center</span>
             <h1 className="text-lg font-bold tracking-wide">GymAnimator</h1>
@@ -600,7 +601,7 @@ const App: React.FC = () => {
       </div>
 
       {/* Bottom: Timeline */}
-      <div className="h-48">
+      <div className={`flex-shrink-0 transition-[height] duration-300 ease-in-out ${isTimelineExpanded ? 'h-48' : 'h-12'}`}>
         <Timeline 
             keyframes={keyframes}
             currentFrameId={currentFrameId}
@@ -613,6 +614,8 @@ const App: React.FC = () => {
             onDurationChange={handleDurationChange}
             isPlaying={isPlaying}
             onPlayPause={() => setIsPlaying(!isPlaying)}
+            isExpanded={isTimelineExpanded}
+            onToggleExpand={() => setIsTimelineExpanded(!isTimelineExpanded)}
         />
       </div>
     </div>

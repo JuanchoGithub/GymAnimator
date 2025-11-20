@@ -266,34 +266,36 @@ export const INITIAL_POSE: SkeletonState = SKELETON_DEF.reduce((acc, bone) => {
 export const SAMPLE_PROPS: Omit<GymProp, 'id' | 'translateX' | 'translateY' | 'attachedTo'>[] = [
   {
     name: 'Barbell',
-    path: 'M-120,-4 L120,-4 L120,4 L-120,4 Z M-80,-35 L-70,-35 L-70,35 L-80,35 Z M-92,-35 L-82,-35 L-82,35 L-92,35 Z M70,-35 L80,-35 L80,35 L70,35 Z M82,-35 L92,-35 L92,35 L82,35 Z M-65,-6 L-62,-6 L-62,6 L-65,6 Z M62,-6 L65,-6 L65,6 L62,6 Z',
-    viewBox: "-125 -40 250 80",
+    // Made significantly wider (from +/-120 to +/-180)
+    path: 'M-180,-4 L180,-4 L180,4 L-180,4 Z M-140,-35 L-130,-35 L-130,35 L-140,35 Z M-152,-35 L-142,-35 L-142,35 L-152,35 Z M130,-35 L140,-35 L140,35 L130,35 Z M142,-35 L152,-35 L152,35 L142,35 Z M-125,-6 L-122,-6 L-122,6 L-125,6 Z M122,-6 L125,-6 L125,6 L122,6 Z',
+    viewBox: "-190 -40 380 80",
     color: "#6b7280",
     scaleX: 1,
     scaleY: 1,
     rotation: 0,
     snapPoints: [
         { id: 'center', name: 'Center', x: 0, y: 0 },
-        { id: 'close_l', name: 'Close Grip L', x: -20, y: 0 },
-        { id: 'close_r', name: 'Close Grip R', x: 20, y: 0 },
-        { id: 'normal_l', name: 'Normal Grip L', x: -50, y: 0 },
-        { id: 'normal_r', name: 'Normal Grip R', x: 50, y: 0 },
-        { id: 'wide_l', name: 'Wide Grip L', x: -90, y: 0 },
-        { id: 'wide_r', name: 'Wide Grip R', x: 90, y: 0 },
+        { id: 'close_l', name: 'Close Grip L', x: -30, y: 0 },
+        { id: 'close_r', name: 'Close Grip R', x: 30, y: 0 },
+        { id: 'normal_l', name: 'Normal Grip L', x: -70, y: 0 },
+        { id: 'normal_r', name: 'Normal Grip R', x: 70, y: 0 },
+        { id: 'wide_l', name: 'Wide Grip L', x: -110, y: 0 },
+        { id: 'wide_r', name: 'Wide Grip R', x: 110, y: 0 },
     ]
   },
   {
     name: 'Dumbbell',
-    path: 'M-20,-2 L20,-2 L20,2 L-20,2 Z M-20,-10 L-10,-10 L-10,10 L-20,10 Z M10,-10 L20,-10 L20,10 L10,10 Z',
-    viewBox: "-25 -15 50 30",
+    // Made wider (length 60 vs 40) and plates thicker
+    path: 'M-30,-3 L30,-3 L30,3 L-30,3 Z M-30,-12 L-15,-12 L-15,12 L-30,12 Z M15,-12 L30,-12 L30,12 L15,12 Z',
+    viewBox: "-35 -15 70 30",
     color: "#6b7280",
     scaleX: 1,
     scaleY: 1,
     rotation: 0,
     snapPoints: [
         { id: 'center', name: 'Handle', x: 0, y: 0 },
-        { id: 'plate_l', name: 'Plate L', x: -15, y: 0 },
-        { id: 'plate_r', name: 'Plate R', x: 15, y: 0 },
+        { id: 'plate_l', name: 'Plate L', x: -22, y: 0 },
+        { id: 'plate_r', name: 'Plate R', x: 22, y: 0 },
     ]
   }
 ];

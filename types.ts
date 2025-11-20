@@ -36,10 +36,19 @@ export interface Bone {
 // A map of Bone ID to its current rotation angle
 export type SkeletonState = Record<BodyPartType, number>;
 
+export interface PropTransform {
+  translateX: number;
+  translateY: number;
+  rotation: number;
+  scaleX: number;
+  scaleY: number;
+}
+
 export interface Keyframe {
   id: string;
   duration: number; // Time to reach this frame (ms)
   pose: SkeletonState;
+  propTransforms: Record<string, PropTransform>;
 }
 
 export interface SnapPoint {

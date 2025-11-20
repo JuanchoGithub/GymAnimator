@@ -1,4 +1,4 @@
-import { BodyPartType, SkeletonState, GymProp } from "./types";
+import { BodyPartType, SkeletonState, GymProp, Keyframe, PropTransform } from "./types";
 import { SKELETON_DEF } from "./constants";
 
 // --- Geometry Helpers ---
@@ -166,4 +166,137 @@ export const solveTwoBoneIK = (
         [upperId]: upperLocal,
         [lowerId]: lowerLocal
     };
+};
+
+// --- Prop & Animation Helpers ---
+
+// Synchronize dumbbells to hand position/rotation (Natural motion)
+export const syncDumbbells = (
+    currentProps: GymProp[], 
+    pose: SkeletonState, 
+    currentAttachments: Record<string, { propId: string, snapPointId: string, rotationOffset: number }>
+) => {
+    let updatedProps = [...currentProps];
+    let changed = false;
+
+    Object.entries(currentAttachments).forEach(([handId, info]) => {
+        const propIndex = updatedProps.findIndex(p => p.id === info.propId);
+        if (propIndex === -1) return;
+        
+        const prop = updatedProps[propIndex];
+        // Heuristic: If it's a dumbbell, it follows the hand (Hand is Master)
+        if (prop.name.toLowerCase().includes('dumbbell')) {
+            const handGlobal = getGlobalTransform(handId as BodyPartType, pose);
+            const snapPoint = prop.snapPoints.find(sp => sp.id === info.snapPointId) || { x: 0, y: 0 };
+
+            // 1. Sync Rotation (User Request: "keep the same angle")
+            // Use the stored offset to maintain relative grip rotation
+            const offset = info.rotationOffset || 0;
+            const newRot = handGlobal.angle - offset;
+            
+            // 2. Sync Position (Prop Center = Hand Global - Rotated Snap Offset)
+            const rad = toRadians(newRot);
+            const sx = snapPoint.x * prop.scaleX;
+            const sy = snapPoint.y * prop.scaleY;
+            
+            // Calculate rotated offset of the snap point relative to prop center
+            const rx = sx * Math.cos(rad) - sy * Math.sin(rad);
+            const ry = sx * Math.sin(rad) + sy * Math.cos(rad);
+
+            const newX = handGlobal.x - rx;
+            const newY = handGlobal.y - ry;
+
+            if (
+                Math.abs(prop.translateX - newX) > 0.1 || 
+                Math.abs(prop.translateY - newY) > 0.1 || 
+                Math.abs(prop.rotation - newRot) > 0.1
+            ) {
+                updatedProps[propIndex] = {
+                    ...prop,
+                    translateX: newX,
+                    translateY: newY,
+                    rotation: newRot
+                };
+                changed = true;
+            }
+        }
+    });
+
+    return changed ? updatedProps : currentProps;
+};
+
+export const exportAnimation = (keyframes: Keyframe[], props: GymProp[]) => {
+    let css = `@keyframes gymAnim {`;
+    let accumulatedTime = 0;
+    const totalDuration = keyframes.reduce((sum, k) => sum + k.duration, 0);
+
+    // Bone Animation CSS
+    keyframes.forEach((kf) => {
+        const percentage = (accumulatedTime / totalDuration) * 100;
+        css += `\n  ${percentage.toFixed(1)}% {`;
+        Object.entries(kf.pose).forEach(([boneId, angle]) => {
+            css += ` --angle-${boneId}: ${angle}deg;`;
+        });
+        css += ` }`;
+        accumulatedTime += kf.duration;
+    });
+    
+    // Final loop frame for bones
+    css += `\n  100% {`;
+        Object.entries(keyframes[0].pose).forEach(([boneId, angle]) => {
+            css += ` --angle-${boneId}: ${angle}deg;`;
+        });
+    css += ` }\n}`;
+
+    // Prop Animation CSS
+    props.forEach(prop => {
+         css += `\n@keyframes prop-${prop.id}-anim {`;
+         accumulatedTime = 0;
+         keyframes.forEach(kf => {
+             const percentage = (accumulatedTime / totalDuration) * 100;
+             const tr = kf.propTransforms[prop.id] || { 
+                 translateX: prop.translateX, 
+                 translateY: prop.translateY, 
+                 rotation: prop.rotation, 
+                 scaleX: prop.scaleX, 
+                 scaleY: prop.scaleY 
+             };
+             css += `\n  ${percentage.toFixed(1)}% { transform: translate(${tr.translateX}px, ${tr.translateY}px) rotate(${tr.rotation}deg) scale(${tr.scaleX}, ${tr.scaleY}); }`;
+             accumulatedTime += kf.duration;
+         });
+         
+         // Final loop frame for props
+         const startTr = keyframes[0].propTransforms[prop.id] || { 
+                 translateX: prop.translateX, 
+                 translateY: prop.translateY, 
+                 rotation: prop.rotation, 
+                 scaleX: prop.scaleX, 
+                 scaleY: prop.scaleY 
+         };
+         css += `\n  100% { transform: translate(${startTr.translateX}px, ${startTr.translateY}px) rotate(${startTr.rotation}deg) scale(${startTr.scaleX}, ${startTr.scaleY}); }`;
+         css += `\n}`;
+         
+         // Apply animation to prop ID
+         css += `\n#${prop.id} { animation: prop-${prop.id}-anim ${totalDuration}ms linear infinite; }`;
+    });
+
+
+    const svgContent = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500" style="background:#f3f4f6">
+  <style>
+    ${css}
+    .skeleton-rig {
+        animation: gymAnim ${totalDuration}ms linear infinite;
+    }
+  </style>
+  ${document.getElementById('export-target')?.innerHTML}
+</svg>
+    `;
+    
+    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'gym-animation.svg';
+    a.click();
 };

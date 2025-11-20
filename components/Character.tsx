@@ -30,6 +30,7 @@ const Character: React.FC<CharacterProps> = ({ pose, selectedBoneId, onSelectBon
     return (
       <g
         key={bone.id}
+        id={`bone-${bone.id}`}
         transform={`translate(${bone.originX}, ${bone.originY}) rotate(${rotation})`}
         onMouseDown={(e) => {
           // Prevent bubbling so we select the specific bone clicked
@@ -80,7 +81,7 @@ const Character: React.FC<CharacterProps> = ({ pose, selectedBoneId, onSelectBon
   const rootBones = SKELETON_DEF.filter(b => b.parentId === null);
 
   return (
-    <g transform={`scale(${scale})`}>
+    <g transform={`scale(${scale})`} className="skeleton-rig">
       {rootBones.map(renderBone)}
     </g>
   );

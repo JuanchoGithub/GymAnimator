@@ -95,54 +95,108 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                 </div>
             ) : activeProp ? (
-                 <div className="space-y-3">
-                     <div className="flex justify-between text-sm items-center">
+                 <div className="space-y-4">
+                     <div className="flex justify-between text-sm items-center border-b border-gray-800 pb-2">
                         <span className="text-green-400 font-semibold truncate pr-2">{activeProp.name}</span>
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-2">
-                         <div>
-                            <label className="text-[10px] text-gray-500">Pos X</label>
+                    {/* Position X */}
+                    <div>
+                        <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                            <span>Position X</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <input 
+                                type="range"
+                                min="-100"
+                                max="500"
+                                value={activeProp.translateX}
+                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, translateX: Number(e.target.value)} : p))}
+                                className="flex-1 accent-yellow-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                            />
                             <input 
                                 type="number" 
                                 value={Math.round(activeProp.translateX)}
                                 onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, translateX: Number(e.target.value)} : p))}
-                                className="w-full bg-gray-800 text-xs text-gray-200 border border-gray-600 rounded px-1 py-1 focus:border-yellow-500 outline-none"
+                                className="w-12 bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
                             />
-                         </div>
-                         <div>
-                            <label className="text-[10px] text-gray-500">Pos Y</label>
+                        </div>
+                    </div>
+
+                    {/* Position Y */}
+                    <div>
+                        <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                            <span>Position Y</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <input 
+                                type="range"
+                                min="-100"
+                                max="600"
+                                value={activeProp.translateY}
+                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, translateY: Number(e.target.value)} : p))}
+                                className="flex-1 accent-yellow-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                            />
                             <input 
                                 type="number" 
                                 value={Math.round(activeProp.translateY)}
                                 onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, translateY: Number(e.target.value)} : p))}
-                                className="w-full bg-gray-800 text-xs text-gray-200 border border-gray-600 rounded px-1 py-1 focus:border-yellow-500 outline-none"
+                                className="w-12 bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
                             />
-                         </div>
-                         <div>
-                            <label className="text-[10px] text-gray-500">Rotation</label>
+                        </div>
+                    </div>
+
+                    {/* Rotation */}
+                    <div>
+                        <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                            <span>Rotation</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <input 
+                                type="range"
+                                min="-180"
+                                max="180"
+                                value={activeProp.rotation}
+                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, rotation: Number(e.target.value)} : p))}
+                                className="flex-1 accent-yellow-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                            />
                             <input 
                                 type="number" 
                                 value={Math.round(activeProp.rotation)}
                                 onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, rotation: Number(e.target.value)} : p))}
-                                className="w-full bg-gray-800 text-xs text-gray-200 border border-gray-600 rounded px-1 py-1 focus:border-yellow-500 outline-none"
+                                className="w-12 bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
                             />
-                         </div>
-                         <div>
-                            <label className="text-[10px] text-gray-500">Scale</label>
+                        </div>
+                    </div>
+
+                    {/* Scale */}
+                    <div>
+                        <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                            <span>Scale</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <input 
+                                type="range"
+                                min="0.1"
+                                max="3.0"
+                                step="0.1"
+                                value={activeProp.scaleX}
+                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, scaleX: Number(e.target.value), scaleY: Number(e.target.value)} : p))}
+                                className="flex-1 accent-yellow-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                            />
                             <input 
                                 type="number" 
                                 step="0.1"
                                 value={activeProp.scaleX}
                                 onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, scaleX: Number(e.target.value), scaleY: Number(e.target.value)} : p))}
-                                className="w-full bg-gray-800 text-xs text-gray-200 border border-gray-600 rounded px-1 py-1 focus:border-yellow-500 outline-none"
+                                className="w-12 bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
                             />
-                         </div>
+                        </div>
                     </div>
 
                     <button 
                         onClick={onDeleteProp}
-                        className="w-full py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 text-xs rounded border border-red-900/50 transition-colors flex items-center justify-center mt-2"
+                        className="w-full py-2 mt-4 bg-red-900/30 hover:bg-red-900/50 text-red-400 text-xs rounded border border-red-900/50 transition-colors flex items-center justify-center"
                     >
                         <span className="material-icons-round text-sm mr-1">delete</span> Delete Prop
                     </button>

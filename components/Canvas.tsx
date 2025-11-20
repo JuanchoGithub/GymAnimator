@@ -80,7 +80,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                     return (
                         <g 
                             key={prop.id} 
-                            id={prop.id}
+                            id={`prop-${prop.id}`}
                             transform={`translate(${prop.translateX}, ${prop.translateY}) rotate(${prop.rotation}) scale(${prop.scaleX}, ${prop.scaleY})`}
                             onMouseDown={(e) => onPropMouseDown(e, prop)}
                             style={{ cursor: dragState?.isDragging && isSelected ? 'grabbing' : 'grab' }}

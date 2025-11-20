@@ -226,32 +226,39 @@ export const syncDumbbells = (
 };
 
 export const exportAnimation = (keyframes: Keyframe[], props: GymProp[]) => {
-    let css = `@keyframes gymAnim {`;
-    let accumulatedTime = 0;
+    let css = '';
     const totalDuration = keyframes.reduce((sum, k) => sum + k.duration, 0);
-
-    // Bone Animation CSS
-    keyframes.forEach((kf) => {
-        const percentage = (accumulatedTime / totalDuration) * 100;
-        css += `\n  ${percentage.toFixed(1)}% {`;
-        Object.entries(kf.pose).forEach(([boneId, angle]) => {
-            css += ` --angle-${boneId}: ${angle}deg;`;
-        });
-        css += ` }`;
-        accumulatedTime += kf.duration;
-    });
     
-    // Final loop frame for bones
-    css += `\n  100% {`;
-        Object.entries(keyframes[0].pose).forEach(([boneId, angle]) => {
-            css += ` --angle-${boneId}: ${angle}deg;`;
+    // 1. BONE ANIMATIONS
+    SKELETON_DEF.forEach(bone => {
+        const animName = `anim-bone-${bone.id}`;
+        css += `\n@keyframes ${animName} {`;
+        
+        let accumulatedTime = 0;
+        keyframes.forEach((kf) => {
+            const percentage = (accumulatedTime / totalDuration) * 100;
+            const angle = kf.pose[bone.id] || 0;
+            
+            // Explicitly animate transform for smooth interpolation
+            css += `\n  ${percentage.toFixed(2)}% { transform: translate(${bone.originX}px, ${bone.originY}px) rotate(${angle}deg); }`;
+            
+            accumulatedTime += kf.duration;
         });
-    css += ` }\n}`;
 
-    // Prop Animation CSS
+        // Close the loop
+        const startAngle = keyframes[0].pose[bone.id] || 0;
+        css += `\n  100% { transform: translate(${bone.originX}px, ${bone.originY}px) rotate(${startAngle}deg); }`;
+        css += `\n}`;
+
+        css += `\n#bone-${bone.id} { animation: ${animName} ${totalDuration}ms linear infinite; }`;
+    });
+
+    // 2. PROP ANIMATIONS
     props.forEach(prop => {
-         css += `\n@keyframes prop-${prop.id}-anim {`;
-         accumulatedTime = 0;
+         const animName = `anim-prop-${prop.id}`;
+         css += `\n@keyframes ${animName} {`;
+         
+         let accumulatedTime = 0;
          keyframes.forEach(kf => {
              const percentage = (accumulatedTime / totalDuration) * 100;
              const tr = kf.propTransforms[prop.id] || { 
@@ -261,33 +268,29 @@ export const exportAnimation = (keyframes: Keyframe[], props: GymProp[]) => {
                  scaleX: prop.scaleX, 
                  scaleY: prop.scaleY 
              };
-             css += `\n  ${percentage.toFixed(1)}% { transform: translate(${tr.translateX}px, ${tr.translateY}px) rotate(${tr.rotation}deg) scale(${tr.scaleX}, ${tr.scaleY}); }`;
+             css += `\n  ${percentage.toFixed(2)}% { transform: translate(${tr.translateX}px, ${tr.translateY}px) rotate(${tr.rotation}deg) scale(${tr.scaleX}, ${tr.scaleY}); }`;
              accumulatedTime += kf.duration;
          });
          
-         // Final loop frame for props
+         // Loop back
          const startTr = keyframes[0].propTransforms[prop.id] || { 
-                 translateX: prop.translateX, 
-                 translateY: prop.translateY, 
-                 rotation: prop.rotation, 
-                 scaleX: prop.scaleX, 
-                 scaleY: prop.scaleY 
+             translateX: prop.translateX, 
+             translateY: prop.translateY, 
+             rotation: prop.rotation, 
+             scaleX: prop.scaleX, 
+             scaleY: prop.scaleY 
          };
          css += `\n  100% { transform: translate(${startTr.translateX}px, ${startTr.translateY}px) rotate(${startTr.rotation}deg) scale(${startTr.scaleX}, ${startTr.scaleY}); }`;
          css += `\n}`;
          
-         // Apply animation to prop ID
-         css += `\n#${prop.id} { animation: prop-${prop.id}-anim ${totalDuration}ms linear infinite; }`;
+         // Use ID selector with prefix matched in Canvas.tsx
+         css += `\n#prop-${prop.id} { animation: ${animName} ${totalDuration}ms linear infinite; }`;
     });
-
 
     const svgContent = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500" style="background:#f3f4f6">
   <style>
     ${css}
-    .skeleton-rig {
-        animation: gymAnim ${totalDuration}ms linear infinite;
-    }
   </style>
   ${document.getElementById('export-target')?.innerHTML}
 </svg>

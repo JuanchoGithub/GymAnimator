@@ -2,6 +2,7 @@ export enum BodyPartType {
   ROOT = 'ROOT',
   HIPS = 'HIPS',
   HEAD = 'HEAD',
+  NECK = 'NECK',
   TORSO = 'TORSO',
   UPPER_ARM_L = 'UPPER_ARM_L',
   LOWER_ARM_L = 'LOWER_ARM_L',
@@ -23,6 +24,7 @@ export interface Bone {
   name: string;
   length: number;
   width: number;
+  jointRadius?: number; // Radius for the joint circle at the pivot
   color: string;
   defaultAngle: number; // Degrees relative to parent
   originX: number; // Pivot X relative to parent

@@ -24,6 +24,9 @@ const Character: React.FC<CharacterProps> = ({ pose, selectedBoneId, onSelectBon
     const lowerChildren = children.filter(c => c.zIndex < bone.zIndex);
     const upperChildren = children.filter(c => c.zIndex >= bone.zIndex);
 
+    // Determine joint circle radius (default to half width if not specified)
+    const jointRadius = bone.jointRadius ?? (bone.width / 2);
+
     return (
       <g
         key={bone.id}
@@ -40,7 +43,18 @@ const Character: React.FC<CharacterProps> = ({ pose, selectedBoneId, onSelectBon
         {/* Render children that should be BEHIND the current bone */}
         {lowerChildren.map(child => renderBone(child))}
 
-        {/* The Bone Visual (The current bone) */}
+        {/* Permanent Joint Circle (The "Joint Ball") */}
+        {jointRadius > 0 && (
+            <circle
+                cx="0"
+                cy="0"
+                r={jointRadius}
+                fill={bone.color}
+                className="pointer-events-none" 
+            />
+        )}
+
+        {/* The Bone Visual (The current bone shape) */}
         <path
           d={bone.shapePath}
           fill={bone.color}
@@ -49,7 +63,7 @@ const Character: React.FC<CharacterProps> = ({ pose, selectedBoneId, onSelectBon
           className="transition-colors duration-150 ease-in-out hover:fill-yellow-500/20"
         />
         
-        {/* Joint Indicator (Pivot) - Only show on hover or selection to reduce clutter */}
+        {/* Selection Highlight Overlay (Pulsing pivot indicator) */}
         <circle 
             r="4" 
             fill={isSelected ? "#facc15" : "transparent"} 

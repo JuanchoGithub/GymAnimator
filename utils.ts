@@ -1,4 +1,4 @@
-import { BodyPartType, SkeletonState } from "./types";
+import { BodyPartType, SkeletonState, GymProp } from "./types";
 import { SKELETON_DEF } from "./constants";
 
 // --- Geometry Helpers ---
@@ -48,6 +48,22 @@ export const getGlobalTransform = (boneId: BodyPartType | null, pose: SkeletonSt
         x: parentTransform.x + rotatedX,
         y: parentTransform.y + rotatedY,
         angle: parentTransform.angle + (pose[boneId] || 0)
+    };
+};
+
+// Get global coordinates of a point inside a prop (taking into account scale, rotation, translation)
+export const transformPoint = (x: number, y: number, prop: GymProp): Point => {
+    // 1. Scale
+    const sx = x * prop.scaleX;
+    const sy = y * prop.scaleY;
+    // 2. Rotate
+    const rad = toRadians(prop.rotation);
+    const rx = sx * Math.cos(rad) - sy * Math.sin(rad);
+    const ry = sx * Math.sin(rad) + sy * Math.cos(rad);
+    // 3. Translate
+    return {
+        x: prop.translateX + rx,
+        y: prop.translateY + ry
     };
 };
 

@@ -42,14 +42,24 @@ export interface Keyframe {
   pose: SkeletonState;
 }
 
+export interface SnapPoint {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+}
+
 export interface GymProp {
   id: string;
   name: string;
   path: string;
   viewBox: string;
-  scale: number;
+  scaleX: number;
+  scaleY: number;
   translateX: number;
   translateY: number;
-  attachedTo: BodyPartType | null; // If null, it's on the floor/background
+  rotation: number; // Degrees
+  attachedTo: BodyPartType | null; // Deprecated/Legacy, using App state for multi-hand
+  snapPoints: SnapPoint[];
   color: string;
 }

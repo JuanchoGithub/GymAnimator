@@ -5,7 +5,10 @@ import Timeline from './components/Timeline';
 import { BodyPartType, Keyframe, SkeletonState, GymProp } from './types';
 import { INITIAL_POSE, SAMPLE_PROPS, SKELETON_DEF, MIRROR_MAPPING, IK_CHAINS } from './constants';
 import { generatePropSvg } from './services/geminiService';
-import { getGlobalTransform, solveTwoBoneIK, toDegrees, normalizeAngle } from './utils';
+import { getGlobalTransform, solveTwoBoneIK, toDegrees, normalizeAngle, transformPoint, toRadians } from './utils';
+
+const SNAP_THRESHOLD = 20;
+const UNSNAP_THRESHOLD = 50;
 
 const App: React.FC = () => {
   // --- State ---
@@ -24,6 +27,10 @@ const App: React.FC = () => {
   const [isMirrorMode, setIsMirrorMode] = useState(false);
   const [isTimelineExpanded, setIsTimelineExpanded] = useState(true);
 
+  // Map of Hand Bone ID -> Attachment Info
+  // Added rotationOffset to preserve grip angle relative to prop
+  const [attachments, setAttachments] = useState<Record<string, { propId: string, snapPointId: string, rotationOffset: number }>>({});
+
   // Dragging State
   const [dragState, setDragState] = useState<{
       isDragging: boolean;
@@ -39,6 +46,57 @@ const App: React.FC = () => {
 
   // --- Helpers ---
   const getCurrentFrame = () => keyframes.find(k => k.id === currentFrameId) || keyframes[0];
+
+  // Synchronize dumbbells to hand position/rotation (Natural motion)
+  const syncDumbbells = (currentProps: GymProp[], pose: SkeletonState, currentAttachments: Record<string, { propId: string, snapPointId: string, rotationOffset: number }>) => {
+      let updatedProps = [...currentProps];
+      let changed = false;
+
+      Object.entries(currentAttachments).forEach(([handId, info]) => {
+          const propIndex = updatedProps.findIndex(p => p.id === info.propId);
+          if (propIndex === -1) return;
+          
+          const prop = updatedProps[propIndex];
+          // Heuristic: If it's a dumbbell, it follows the hand (Hand is Master)
+          if (prop.name.toLowerCase().includes('dumbbell')) {
+              const handGlobal = getGlobalTransform(handId as BodyPartType, pose);
+              const snapPoint = prop.snapPoints.find(sp => sp.id === info.snapPointId) || { x: 0, y: 0 };
+
+              // 1. Sync Rotation (User Request: "keep the same angle")
+              // Use the stored offset to maintain relative grip rotation
+              const offset = info.rotationOffset || 0;
+              const newRot = handGlobal.angle - offset;
+              
+              // 2. Sync Position (Prop Center = Hand Global - Rotated Snap Offset)
+              const rad = toRadians(newRot);
+              const sx = snapPoint.x * prop.scaleX;
+              const sy = snapPoint.y * prop.scaleY;
+              
+              // Calculate rotated offset of the snap point relative to prop center
+              const rx = sx * Math.cos(rad) - sy * Math.sin(rad);
+              const ry = sx * Math.sin(rad) + sy * Math.cos(rad);
+
+              const newX = handGlobal.x - rx;
+              const newY = handGlobal.y - ry;
+
+              if (
+                  Math.abs(prop.translateX - newX) > 0.1 || 
+                  Math.abs(prop.translateY - newY) > 0.1 || 
+                  Math.abs(prop.rotation - newRot) > 0.1
+              ) {
+                  updatedProps[propIndex] = {
+                      ...prop,
+                      translateX: newX,
+                      translateY: newY,
+                      rotation: newRot
+                  };
+                  changed = true;
+              }
+          }
+      });
+
+      return changed ? updatedProps : currentProps;
+  };
 
   // --- Effects ---
   // Sync currentPose with selected frame when not playing
@@ -146,7 +204,8 @@ const App: React.FC = () => {
           const dx = svgPoint.x - startPt.x;
           const dy = svgPoint.y - startPt.y;
 
-          setProps(prevProps => prevProps.map(p => {
+          // Update the Moved Prop
+          let updatedProps = props.map(p => {
               if (p.id === selectedPropId) {
                   return {
                       ...p,
@@ -155,7 +214,61 @@ const App: React.FC = () => {
                   };
               }
               return p;
-          }));
+          });
+
+          setProps(updatedProps);
+          
+          // --- IK Follow for Attached Hands ---
+          // If we move the Prop (Master), the hands (Slaves) must follow
+          const movingProp = updatedProps.find(p => p.id === selectedPropId);
+          if (movingProp) {
+              const attachedHands = Object.entries(attachments)
+                  .filter(([_, info]) => info.propId === movingProp.id);
+              
+              if (attachedHands.length > 0) {
+                  let newPose = { ...currentPose };
+                  
+                  attachedHands.forEach(([handId, info]) => {
+                      const snapGlobal = transformPoint(
+                          movingProp.snapPoints.find(sp => sp.id === info.snapPointId)?.x || 0,
+                          movingProp.snapPoints.find(sp => sp.id === info.snapPointId)?.y || 0,
+                          movingProp
+                      );
+
+                      // 1. Position IK
+                      const chain = IK_CHAINS[handId];
+                      if (chain) {
+                          const ikResult = solveTwoBoneIK(chain.upper, chain.lower, snapGlobal, newPose);
+                          if (ikResult) {
+                              Object.assign(newPose, ikResult);
+                          }
+                      }
+
+                      // 2. Rotation Sync (Hand Grips Prop)
+                      // Align hand bone rotation to prop rotation, respecting original grip offset
+                      const handBoneDef = SKELETON_DEF.find(b => b.id === handId);
+                      if(handBoneDef && handBoneDef.parentId) {
+                          const parentGlobal = getGlobalTransform(handBoneDef.parentId, newPose);
+                          
+                          // Target Global = Prop Rotation + Offset
+                          const offset = info.rotationOffset || 0;
+                          const targetHandGlobal = movingProp.rotation + offset; 
+                          
+                          const targetHandLocal = normalizeAngle(targetHandGlobal - parentGlobal.angle);
+                          newPose[handId as BodyPartType] = targetHandLocal;
+                      }
+                  });
+
+                  setCurrentPose(newPose);
+                  // Update Keyframe
+                  setKeyframes(prev => prev.map(kf => {
+                      if (kf.id === currentFrameId) {
+                          return { ...kf, pose: newPose };
+                      }
+                      return kf;
+                  }));
+              }
+          }
           return;
       }
 
@@ -164,11 +277,83 @@ const App: React.FC = () => {
           const boneId = selectedBoneId;
           let newPose = { ...currentPose };
           let affectedBones: BodyPartType[] = [];
-
+          let newAttachments = { ...attachments };
+          
           // 1. Check if it's an IK Chain End Effector (Hand/Foot)
           if (IK_CHAINS[boneId]) {
               const chain = IK_CHAINS[boneId];
-              const ikResult = solveTwoBoneIK(chain.upper, chain.lower, svgPoint, currentPose);
+              let targetPos = svgPoint;
+
+              // --- Snap Logic (Only for hands) ---
+              if (boneId.includes('HAND')) {
+                  // Find nearest snap point across all props
+                  let nearestDist = Infinity;
+                  let nearestSnapPos = svgPoint;
+                  let nearestInfo: { propId: string, snapId: string } | null = null;
+
+                  props.forEach(prop => {
+                      prop.snapPoints.forEach(sp => {
+                          const globalSp = transformPoint(sp.x, sp.y, prop);
+                          const dist = Math.sqrt(Math.pow(globalSp.x - svgPoint.x, 2) + Math.pow(globalSp.y - svgPoint.y, 2));
+                          if (dist < nearestDist) {
+                              nearestDist = dist;
+                              nearestSnapPos = globalSp;
+                              nearestInfo = { propId: prop.id, snapId: sp.id };
+                          }
+                      });
+                  });
+
+                  const currentAttachment = attachments[boneId];
+
+                  if (currentAttachment) {
+                      // Already attached
+                      const attachedProp = props.find(p => p.id === currentAttachment.propId);
+                      const attachedSp = attachedProp?.snapPoints.find(sp => sp.id === currentAttachment.snapPointId);
+                      const isDumbbell = attachedProp?.name.toLowerCase().includes('dumbbell');
+                      
+                      if (attachedProp && attachedSp) {
+                           const anchorPos = transformPoint(attachedSp.x, attachedSp.y, attachedProp);
+                           const distFromAnchor = Math.sqrt(Math.pow(anchorPos.x - svgPoint.x, 2) + Math.pow(anchorPos.y - svgPoint.y, 2));
+                           
+                           if (distFromAnchor > UNSNAP_THRESHOLD) {
+                               // Break attachment
+                               delete newAttachments[boneId];
+                               targetPos = svgPoint; // Free movement
+                           } else {
+                               // Still attached
+                               if (isDumbbell) {
+                                   // DUMBBELL SPECIAL BEHAVIOR:
+                                   // The prop follows the hand. Allow hand to move freely to mouse.
+                                   // We will update the prop position later in this function.
+                                   targetPos = svgPoint;
+                               } else {
+                                   // BARBELL/FIXED BEHAVIOR:
+                                   // The hand is anchored to the prop. Prop is master.
+                                   // Stick to anchor (prevent hand moving unless unsnapped).
+                                   targetPos = anchorPos;
+                               }
+                           }
+                      }
+                  } else {
+                      // Not attached - Check for new snap
+                      if (nearestDist < SNAP_THRESHOLD && nearestInfo) {
+                          targetPos = nearestSnapPos;
+                          
+                          // Calculate initial rotation offset so the hand doesn't snap to weird angle
+                          const handGlobal = getGlobalTransform(boneId, currentPose);
+                          const prop = props.find(p => p.id === nearestInfo!.propId)!;
+                          const offset = normalizeAngle(handGlobal.angle - prop.rotation);
+
+                          newAttachments[boneId] = { 
+                              propId: nearestInfo.propId, 
+                              snapPointId: nearestInfo.snapId,
+                              rotationOffset: offset
+                          };
+                      }
+                  }
+              }
+
+              const ikResult = solveTwoBoneIK(chain.upper, chain.lower, targetPos, currentPose);
               
               if (ikResult) {
                   newPose = { ...newPose, ...ikResult };
@@ -188,8 +373,6 @@ const App: React.FC = () => {
                  const targetGlobalAngle = toDegrees(Math.atan2(dy, dx));
                  
                  // SVG bones point down (+Y, 90 deg math). 
-                 // So if target is at Math 90 (Down), we want Rotation 0.
-                 // Rotation = Target - 90.
                  const targetGlobalSvg = targetGlobalAngle - 90;
 
                  // Convert to Local
@@ -202,18 +385,22 @@ const App: React.FC = () => {
 
           // 3. Apply Mirroring
           if (isMirrorMode) {
-              // We iterate through bones that were changed this frame
               affectedBones.forEach(sourceId => {
                   const mirrorId = MIRROR_MAPPING[sourceId];
                   if (mirrorId && newPose[sourceId] !== undefined) {
-                      // For symmetric horizontal movement: Left 45 -> Right -45
                       newPose[mirrorId] = -newPose[sourceId];
                   }
               });
           }
 
+          // 4. Sync Dumbbell Position/Rotation to Hand
+          // If we moved the hand (either via IK drag or Parent Rotation), update any attached dumbbells.
+          const syncedProps = syncDumbbells(props, newPose, newAttachments);
+          if (syncedProps !== props) setProps(syncedProps);
+
           // Update Real-time Pose
           setCurrentPose(newPose);
+          setAttachments(newAttachments);
 
           // Update Keyframe
           setKeyframes(prev => prev.map(kf => {
@@ -246,12 +433,39 @@ const App: React.FC = () => {
     const newPose = updatePose(currentPose, selectedBoneId, angle);
     setCurrentPose(newPose);
 
+    // Rotation might affect attached dumbbell position/rotation
+    // Note: We use existing attachments for the prop update
+    const syncedProps = syncDumbbells(props, newPose, attachments);
+    if (syncedProps !== props) setProps(syncedProps);
+
+    // If the bone is attached, we should update the rotationOffset to reflect manual adjustment
+    // ensuring that the new grip orientation is saved.
+    if (attachments[selectedBoneId]) {
+         const att = attachments[selectedBoneId];
+         const handGlobal = getGlobalTransform(selectedBoneId, newPose);
+         // Get the latest prop state (syncedProps might have updated it)
+         const prop = syncedProps.find(p => p.id === att.propId);
+         if (prop) {
+             const newOffset = normalizeAngle(handGlobal.angle - prop.rotation);
+             setAttachments(prev => ({
+                 ...prev,
+                 [selectedBoneId]: { ...att, rotationOffset: newOffset }
+             }));
+         }
+    }
+
     setKeyframes(keyframes.map(kf => {
       if (kf.id === currentFrameId) {
         return { ...kf, pose: newPose };
       }
       return kf;
     }));
+  };
+
+  const handleDetachBone = (boneId: string) => {
+      const newAttachments = { ...attachments };
+      delete newAttachments[boneId];
+      setAttachments(newAttachments);
   };
 
   const handleAddFrame = () => {
@@ -288,10 +502,13 @@ const App: React.FC = () => {
         name: result.name,
         path: result.path,
         viewBox: result.viewBox,
-        scale: 1,
+        scaleX: 1,
+        scaleY: 1,
         translateX: 200,
         translateY: 350,
         attachedTo: null,
+        rotation: 0,
+        snapPoints: [{ id: 'center', name: 'Center', x: 0, y: 0 }],
         color: '#cccccc'
       };
       setProps([...props, newProp]);
@@ -309,10 +526,13 @@ const App: React.FC = () => {
         name: preset.name,
         path: preset.path,
         viewBox: preset.viewBox,
-        scale: 1,
+        scaleX: 1,
+        scaleY: 1,
         translateX: 200,
         translateY: 350,
         attachedTo: null,
+        rotation: preset.rotation || 0,
+        snapPoints: preset.snapPoints || [],
         color: preset.color
       };
       setProps([...props, newProp]);
@@ -320,6 +540,15 @@ const App: React.FC = () => {
 
   const handleDeleteProp = () => {
       if (selectedPropId) {
+          // Clean up attachments linked to this prop
+          const newAttachments = { ...attachments };
+          Object.keys(newAttachments).forEach(key => {
+              if (newAttachments[key].propId === selectedPropId) {
+                  delete newAttachments[key];
+              }
+          });
+          setAttachments(newAttachments);
+
           setProps(props.filter(p => p.id !== selectedPropId));
           setSelectedPropId(null);
       }
@@ -428,6 +657,32 @@ const App: React.FC = () => {
                             <span>Rotation</span>
                             {isMirrorMode && MIRROR_MAPPING[activeBoneDef.id] && <span className="text-yellow-500">Mirrored</span>}
                         </div>
+
+                        {/* Detach Logic for Bone */}
+                        {attachments[activeBoneDef.id] && (
+                             <div className="mt-4 pt-3 border-t border-gray-700">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs text-green-400 font-semibold flex items-center">
+                                        <span className="material-icons-round text-sm mr-1">link</span>
+                                        Attached
+                                    </span>
+                                </div>
+                                <div className="text-[10px] text-gray-400 mb-2 bg-gray-800 p-2 rounded">
+                                    {(() => {
+                                        const att = attachments[activeBoneDef.id];
+                                        const p = props.find(prop => prop.id === att.propId);
+                                        const sp = p?.snapPoints.find(s => s.id === att.snapPointId);
+                                        return `${p?.name || 'Unknown'} (${sp?.name || 'Point'})`;
+                                    })()}
+                                </div>
+                                <button 
+                                    onClick={() => handleDetachBone(activeBoneDef.id)}
+                                    className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded border border-gray-500 transition-colors"
+                                >
+                                    Detach
+                                </button>
+                             </div>
+                        )}
                     </div>
                 ) : activeProp ? (
                      <div className="space-y-3">
@@ -437,7 +692,7 @@ const App: React.FC = () => {
                         
                         <div className="grid grid-cols-2 gap-2">
                              <div>
-                                <label className="text-[10px] text-gray-500">X</label>
+                                <label className="text-[10px] text-gray-500">Pos X</label>
                                 <input 
                                     type="number" 
                                     value={Math.round(activeProp.translateX)}
@@ -446,11 +701,30 @@ const App: React.FC = () => {
                                 />
                              </div>
                              <div>
-                                <label className="text-[10px] text-gray-500">Y</label>
+                                <label className="text-[10px] text-gray-500">Pos Y</label>
                                 <input 
                                     type="number" 
                                     value={Math.round(activeProp.translateY)}
                                     onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, translateY: Number(e.target.value)} : p))}
+                                    className="w-full bg-gray-800 text-xs text-gray-200 border border-gray-600 rounded px-1 py-1 focus:border-yellow-500 outline-none"
+                                />
+                             </div>
+                             <div>
+                                <label className="text-[10px] text-gray-500">Rotation</label>
+                                <input 
+                                    type="number" 
+                                    value={Math.round(activeProp.rotation)}
+                                    onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, rotation: Number(e.target.value)} : p))}
+                                    className="w-full bg-gray-800 text-xs text-gray-200 border border-gray-600 rounded px-1 py-1 focus:border-yellow-500 outline-none"
+                                />
+                             </div>
+                             <div>
+                                <label className="text-[10px] text-gray-500">Scale</label>
+                                <input 
+                                    type="number" 
+                                    step="0.1"
+                                    value={activeProp.scaleX}
+                                    onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, scaleX: Number(e.target.value), scaleY: Number(e.target.value)} : p))}
                                     className="w-full bg-gray-800 text-xs text-gray-200 border border-gray-600 rounded px-1 py-1 focus:border-yellow-500 outline-none"
                                 />
                              </div>
@@ -462,6 +736,43 @@ const App: React.FC = () => {
                         >
                             <span className="material-icons-round text-sm mr-1">delete</span> Delete Prop
                         </button>
+
+                        {/* Attached Hands List */}
+                        {(() => {
+                             const attachedHands = Object.entries(attachments).filter(([_, info]) => info.propId === activeProp.id);
+                             if (attachedHands.length > 0) {
+                                 return (
+                                     <div className="mt-4 pt-3 border-t border-gray-700">
+                                         <div className="text-xs font-bold text-gray-400 mb-2 flex items-center">
+                                            <span className="material-icons-round text-sm mr-1">link</span> Attached Hands
+                                         </div>
+                                         <div className="space-y-1.5">
+                                             {attachedHands.map(([boneId, info]) => {
+                                                 const boneName = SKELETON_DEF.find(b => b.id === boneId)?.name || boneId;
+                                                 const snapName = activeProp.snapPoints.find(sp => sp.id === info.snapPointId)?.name || 'Point';
+                                                 return (
+                                                     <div key={boneId} className="flex items-center justify-between bg-gray-800 p-2 rounded border border-gray-600">
+                                                         <div className="flex flex-col">
+                                                             <span className="text-xs text-gray-200">{boneName}</span>
+                                                             <span className="text-[10px] text-gray-500">{snapName}</span>
+                                                         </div>
+                                                         <button 
+                                                             onClick={() => handleDetachBone(boneId)}
+                                                             className="p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-white"
+                                                             title="Detach"
+                                                         >
+                                                             <span className="material-icons-round text-sm">link_off</span>
+                                                         </button>
+                                                     </div>
+                                                 );
+                                             })}
+                                         </div>
+                                     </div>
+                                 );
+                             }
+                             return null;
+                        })()}
+
                     </div>
                 ) : (
                     <div className="text-sm text-gray-500 italic text-center py-2">
@@ -478,7 +789,7 @@ const App: React.FC = () => {
                 <div className="flex flex-wrap gap-2 mb-4">
                     {SAMPLE_PROPS.map(p => (
                         <button 
-                            key={p.id}
+                            key={p.name}
                             onClick={() => handleAddPresetProp(p)}
                             className="px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded text-xs border border-gray-600 text-gray-300 transition-colors"
                         >
@@ -557,7 +868,7 @@ const App: React.FC = () => {
                         return (
                             <g 
                                 key={prop.id} 
-                                transform={`translate(${prop.translateX}, ${prop.translateY}) scale(${prop.scale})`}
+                                transform={`translate(${prop.translateX}, ${prop.translateY}) rotate(${prop.rotation}) scale(${prop.scaleX}, ${prop.scaleY})`}
                                 onMouseDown={(e) => handlePropMouseDown(e, prop)}
                                 style={{ cursor: dragState?.isDragging && isSelected ? 'grabbing' : 'grab' }}
                                 className="group"
@@ -582,6 +893,19 @@ const App: React.FC = () => {
                                     className="transition-opacity hover:opacity-90"
                                 />
 
+                                {/* Snap Points Visual (Visible if selected or dragging hand) */}
+                                {(isSelected || (dragState?.type === 'BONE' && dragState.id.includes('HAND'))) && prop.snapPoints?.map(sp => (
+                                    <circle 
+                                        key={sp.id}
+                                        cx={sp.x}
+                                        cy={sp.y}
+                                        r={4 / prop.scaleX} // Counter-scale radius
+                                        fill="#ef4444"
+                                        opacity="0.5"
+                                        className="pointer-events-none"
+                                    />
+                                ))}
+
                                 {/* Pivot Point (visible when selected) */}
                                 {isSelected && (
                                     <circle r="3" fill="#facc15" stroke="black" strokeWidth="1" />
@@ -595,6 +919,7 @@ const App: React.FC = () => {
            <div className="absolute bottom-4 right-4 text-gray-500 text-xs font-mono flex flex-col items-end space-y-1 pointer-events-none">
                <span>{isPlaying ? 'PLAYING' : 'EDIT MODE'}</span>
                {dragState?.isDragging && <span className="text-yellow-500 font-bold">DRAGGING</span>}
+               {Object.keys(attachments).length > 0 && <span className="text-green-400">ATTACHED</span>}
                {isMirrorMode && <span className="text-blue-400">MIRROR: ON</span>}
            </div>
         </div>

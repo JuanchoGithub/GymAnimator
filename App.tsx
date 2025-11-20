@@ -626,7 +626,7 @@ const App: React.FC = () => {
       updateKeyframeProps(updatedProps);
   };
 
-  const handleExport = () => exportAnimation(keyframes, props);
+  const handleExport = () => exportAnimation(keyframes, props, attachments);
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-900 text-gray-100 overflow-hidden">

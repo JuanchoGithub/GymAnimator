@@ -1,5 +1,5 @@
 import { BodyPartType, SkeletonState, GymProp, Keyframe, PropTransform } from "./types";
-import { SKELETON_DEF } from "./constants";
+import { SKELETON_DEF, IK_CHAINS } from "./constants";
 
 // --- Geometry Helpers ---
 
@@ -52,18 +52,22 @@ export const getGlobalTransform = (boneId: BodyPartType | null, pose: SkeletonSt
 };
 
 // Get global coordinates of a point inside a prop (taking into account scale, rotation, translation)
-export const transformPoint = (x: number, y: number, prop: GymProp): Point => {
+export const transformPoint = (x: number, y: number, prop: GymProp | PropTransform): Point => {
+    // Handle both full GymProp and light PropTransform (which might be missing translateX etc if not careful, but here we expect full data)
+    // We assume the input object has the transform properties.
+    const p = prop as any;
+    
     // 1. Scale
-    const sx = x * prop.scaleX;
-    const sy = y * prop.scaleY;
+    const sx = x * (p.scaleX ?? 1);
+    const sy = y * (p.scaleY ?? 1);
     // 2. Rotate
-    const rad = toRadians(prop.rotation);
+    const rad = toRadians(p.rotation ?? 0);
     const rx = sx * Math.cos(rad) - sy * Math.sin(rad);
     const ry = sx * Math.sin(rad) + sy * Math.cos(rad);
     // 3. Translate
     return {
-        x: prop.translateX + rx,
-        y: prop.translateY + ry
+        x: (p.translateX ?? 0) + rx,
+        y: (p.translateY ?? 0) + ry
     };
 };
 
@@ -225,31 +229,137 @@ export const syncDumbbells = (
     return changed ? updatedProps : currentProps;
 };
 
-export const exportAnimation = (keyframes: Keyframe[], props: GymProp[]) => {
+export const exportAnimation = (
+    keyframes: Keyframe[], 
+    props: GymProp[],
+    attachments: Record<string, { propId: string, snapPointId: string, rotationOffset: number }>
+) => {
     let css = '';
     const totalDuration = keyframes.reduce((sum, k) => sum + k.duration, 0);
+    
+    // Baking Configuration
+    const SAMPLE_RATE = 30; // ms (approx 33fps) for smooth IK approximation in CSS
+    const bakedFrames: { time: number; pose: SkeletonState; props: Record<string, PropTransform> }[] = [];
+
+    // --- BAKE ANIMATION ---
+    // We step through the timeline, interpolate everything, solve IK, and store the result.
+    let currentTime = 0;
+    
+    while (currentTime <= totalDuration) {
+        // 1. Find active keyframes
+        let accumulated = 0;
+        let activeIndex = 0;
+        // Loop to find which segment we are in
+        for(let i=0; i<keyframes.length; i++) {
+            if (currentTime < accumulated + keyframes[i].duration) {
+                activeIndex = i;
+                break;
+            }
+            accumulated += keyframes[i].duration;
+            // Handle the exact end of the timeline falling into the last frame
+            if (i === keyframes.length - 1 && currentTime >= accumulated) {
+                activeIndex = i;
+            }
+        }
+
+        const currentKeyframe = keyframes[activeIndex];
+        // Loop back to 0 for interpolation if at the last frame
+        const nextKeyframe = keyframes[(activeIndex + 1) % keyframes.length];
+        
+        // Time within current frame
+        const timeInFrame = currentTime - accumulated;
+        // If at the very end, progress is 1 relative to last frame, or 0 relative to first.
+        // To keep loop smooth, we treat >totalDuration as wrap.
+        const progress = Math.min(1, Math.max(0, timeInFrame / currentKeyframe.duration));
+
+        // 2. Interpolate Props
+        const interpolatedProps: Record<string, PropTransform> = {};
+        props.forEach(p => {
+            const startTr = currentKeyframe.propTransforms[p.id] || { 
+                translateX: p.translateX, translateY: p.translateY, rotation: p.rotation, scaleX: p.scaleX, scaleY: p.scaleY 
+            };
+            const endTr = nextKeyframe.propTransforms[p.id] || startTr;
+
+            interpolatedProps[p.id] = {
+                translateX: startTr.translateX + (endTr.translateX - startTr.translateX) * progress,
+                translateY: startTr.translateY + (endTr.translateY - startTr.translateY) * progress,
+                rotation: startTr.rotation + (endTr.rotation - startTr.rotation) * progress,
+                scaleX: startTr.scaleX + (endTr.scaleX - startTr.scaleX) * progress,
+                scaleY: startTr.scaleY + (endTr.scaleY - startTr.scaleY) * progress,
+            };
+        });
+
+        // 3. Interpolate Pose (Linear)
+        const interpolatedPose: SkeletonState = {} as SkeletonState;
+        Object.keys(currentKeyframe.pose).forEach((key) => {
+            const k = key as BodyPartType;
+            const startAngle = currentKeyframe.pose[k];
+            const endAngle = nextKeyframe.pose[k];
+            interpolatedPose[k] = startAngle + (endAngle - startAngle) * progress;
+        });
+
+        // 4. Apply IK Constraints (The Baking Magic)
+        Object.entries(attachments).forEach(([boneId, info]) => {
+            const pTransform = interpolatedProps[info.propId];
+            const originalProp = props.find(p => p.id === info.propId);
+            
+            if (originalProp && pTransform) {
+                // Merge static data (snapPoints) with interpolated transform
+                const tempProp = { ...originalProp, ...pTransform };
+                const snapPoint = tempProp.snapPoints.find(sp => sp.id === info.snapPointId);
+                
+                if (snapPoint) {
+                    const targetGlobal = transformPoint(snapPoint.x, snapPoint.y, tempProp);
+                    
+                    // Solve Position IK
+                    const chain = IK_CHAINS[boneId];
+                    if (chain) {
+                        const ikResult = solveTwoBoneIK(chain.upper, chain.lower, targetGlobal, interpolatedPose);
+                        if (ikResult) Object.assign(interpolatedPose, ikResult);
+                    }
+                    
+                    // Solve Rotation Constraint
+                    const handBoneDef = getBoneDef(boneId as BodyPartType);
+                    if(handBoneDef && handBoneDef.parentId) {
+                          const parentGlobal = getGlobalTransform(handBoneDef.parentId, interpolatedPose);
+                          const offset = info.rotationOffset || 0;
+                          const targetHandGlobal = tempProp.rotation + offset; 
+                          const targetHandLocal = normalizeAngle(targetHandGlobal - parentGlobal.angle);
+                          interpolatedPose[boneId as BodyPartType] = targetHandLocal;
+                    }
+                }
+            }
+        });
+
+        bakedFrames.push({
+            time: currentTime,
+            pose: interpolatedPose,
+            props: interpolatedProps
+        });
+
+        // Increment
+        if (currentTime >= totalDuration) break;
+        currentTime += SAMPLE_RATE;
+        if (currentTime > totalDuration && currentTime - SAMPLE_RATE < totalDuration) {
+            // Ensure we capture the final frame state exactly
+            currentTime = totalDuration;
+        }
+    }
+
+    // --- GENERATE CSS FROM BAKED FRAMES ---
     
     // 1. BONE ANIMATIONS
     SKELETON_DEF.forEach(bone => {
         const animName = `anim-bone-${bone.id}`;
         css += `\n@keyframes ${animName} {`;
         
-        let accumulatedTime = 0;
-        keyframes.forEach((kf) => {
-            const percentage = (accumulatedTime / totalDuration) * 100;
-            const angle = kf.pose[bone.id] || 0;
-            
-            // Explicitly animate transform for smooth interpolation
-            css += `\n  ${percentage.toFixed(2)}% { transform: translate(${bone.originX}px, ${bone.originY}px) rotate(${angle}deg); }`;
-            
-            accumulatedTime += kf.duration;
+        bakedFrames.forEach((frame) => {
+            const percentage = (frame.time / totalDuration) * 100;
+            const angle = frame.pose[bone.id] || 0;
+            css += `\n  ${percentage.toFixed(2)}% { transform: translate(${bone.originX}px, ${bone.originY}px) rotate(${angle.toFixed(2)}deg); }`;
         });
 
-        // Close the loop
-        const startAngle = keyframes[0].pose[bone.id] || 0;
-        css += `\n  100% { transform: translate(${bone.originX}px, ${bone.originY}px) rotate(${startAngle}deg); }`;
         css += `\n}`;
-
         css += `\n#bone-${bone.id} { animation: ${animName} ${totalDuration}ms linear infinite; }`;
     });
 
@@ -258,32 +368,15 @@ export const exportAnimation = (keyframes: Keyframe[], props: GymProp[]) => {
          const animName = `anim-prop-${prop.id}`;
          css += `\n@keyframes ${animName} {`;
          
-         let accumulatedTime = 0;
-         keyframes.forEach(kf => {
-             const percentage = (accumulatedTime / totalDuration) * 100;
-             const tr = kf.propTransforms[prop.id] || { 
-                 translateX: prop.translateX, 
-                 translateY: prop.translateY, 
-                 rotation: prop.rotation, 
-                 scaleX: prop.scaleX, 
-                 scaleY: prop.scaleY 
-             };
-             css += `\n  ${percentage.toFixed(2)}% { transform: translate(${tr.translateX}px, ${tr.translateY}px) rotate(${tr.rotation}deg) scale(${tr.scaleX}, ${tr.scaleY}); }`;
-             accumulatedTime += kf.duration;
+         bakedFrames.forEach(frame => {
+             const percentage = (frame.time / totalDuration) * 100;
+             const tr = frame.props[prop.id];
+             if (tr) {
+                 css += `\n  ${percentage.toFixed(2)}% { transform: translate(${tr.translateX.toFixed(1)}px, ${tr.translateY.toFixed(1)}px) rotate(${tr.rotation.toFixed(1)}deg) scale(${tr.scaleX.toFixed(2)}, ${tr.scaleY.toFixed(2)}); }`;
+             }
          });
          
-         // Loop back
-         const startTr = keyframes[0].propTransforms[prop.id] || { 
-             translateX: prop.translateX, 
-             translateY: prop.translateY, 
-             rotation: prop.rotation, 
-             scaleX: prop.scaleX, 
-             scaleY: prop.scaleY 
-         };
-         css += `\n  100% { transform: translate(${startTr.translateX}px, ${startTr.translateY}px) rotate(${startTr.rotation}deg) scale(${startTr.scaleX}, ${startTr.scaleY}); }`;
          css += `\n}`;
-         
-         // Use ID selector with prefix matched in Canvas.tsx
          css += `\n#prop-${prop.id} { animation: ${animName} ${totalDuration}ms linear infinite; }`;
     });
 

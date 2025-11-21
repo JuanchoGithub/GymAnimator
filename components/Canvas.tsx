@@ -12,6 +12,7 @@ interface CanvasProps {
     selectedPropId: string | null;
     activeView: ViewType;
     layoutMode: LayoutMode;
+    slotViews: ViewType[];
     attachments: Record<string, { propId: string; snapPointId: string }>;
     dragState: { isDragging: boolean; type: 'BONE' | 'PROP'; id: string } | null;
     isPlaying: boolean;
@@ -22,6 +23,7 @@ interface CanvasProps {
     onSvgMouseUp: () => void;
     onClearSelection: () => void;
     onSetActiveView: (view: ViewType) => void;
+    onUpdateSlotView: (index: number, view: ViewType) => void;
 }
 
 export const Canvas: React.FC<CanvasProps> = ({
@@ -31,6 +33,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     selectedPropId,
     activeView,
     layoutMode,
+    slotViews,
     attachments,
     dragState,
     isPlaying,
@@ -40,10 +43,11 @@ export const Canvas: React.FC<CanvasProps> = ({
     onSvgMouseMove,
     onSvgMouseUp,
     onClearSelection,
-    onSetActiveView
+    onSetActiveView,
+    onUpdateSlotView
 }) => {
   
-  const renderViewport = (view: ViewType, label: string) => {
+  const renderViewport = (view: ViewType, label: string, slotIndex: number = -1, showControls: boolean = false) => {
       const isActive = activeView === view;
 
       const renderProp = (prop: GymProp) => {
@@ -126,8 +130,28 @@ export const Canvas: React.FC<CanvasProps> = ({
             className={`relative bg-gray-200 overflow-hidden border-4 transition-colors w-full h-full min-h-0 min-w-0 ${isActive ? 'border-blue-500 shadow-lg z-10' : 'border-gray-700 opacity-90 hover:opacity-100'}`}
             onMouseDown={() => onSetActiveView(view)}
         >
-            <div className="absolute top-2 left-2 z-20 bg-black/50 px-2 py-0.5 rounded text-xs text-white font-mono pointer-events-none">
-                {label}
+             {/* Label & Controls Overlay */}
+             <div className="absolute top-0 left-0 w-full p-2 z-20 flex justify-between items-start pointer-events-none">
+                <div className="bg-black/50 px-2 py-0.5 rounded text-xs text-white font-mono">
+                    {label}
+                </div>
+                
+                {showControls && (
+                     <div className="flex space-x-1 pointer-events-auto shadow-lg">
+                         {(['FRONT', 'SIDE', 'TOP'] as ViewType[]).map(v => (
+                             <button 
+                                key={v}
+                                onMouseDown={(e) => { 
+                                    e.stopPropagation();
+                                    onUpdateSlotView(slotIndex, v);
+                                }}
+                                className={`text-[10px] px-2 py-1 rounded border border-gray-600 transition-colors font-bold ${view === v ? 'bg-blue-600 text-white border-blue-500' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
+                             >
+                                 {v}
+                             </button>
+                         ))}
+                     </div>
+                )}
             </div>
             
             {/* Grid Background */}
@@ -171,33 +195,33 @@ export const Canvas: React.FC<CanvasProps> = ({
   const getGridContent = () => {
       switch(layoutMode) {
           case 'SINGLE':
-              return renderViewport(activeView, activeView);
+              return renderViewport(activeView, activeView, -1, false);
           case 'SIDE_BY_SIDE':
               return (
                   <div className="grid grid-cols-2 gap-1 w-full h-full min-h-0">
-                        {renderViewport('FRONT', 'FRONT')}
-                        {renderViewport('SIDE', 'SIDE')}
+                        {renderViewport(slotViews[0], slotViews[0], 0, true)}
+                        {renderViewport(slotViews[1], slotViews[1], 1, true)}
                   </div>
               );
           case 'TOP_BOTTOM':
              return (
                   <div className="grid grid-rows-2 gap-1 w-full h-full min-h-0">
-                        {renderViewport('FRONT', 'FRONT')}
-                        {renderViewport('TOP', 'TOP')}
+                        {renderViewport(slotViews[0], slotViews[0], 0, true)}
+                        {renderViewport(slotViews[2], slotViews[2], 2, true)}
                   </div>
               );
           case 'THREE_SPLIT':
               return (
                   <div className="grid grid-cols-2 gap-1 w-full h-full min-h-0">
-                      {renderViewport('FRONT', 'FRONT')}
+                      {renderViewport(slotViews[0], slotViews[0], 0, true)}
                       <div className="grid grid-rows-2 gap-1 h-full min-h-0">
-                          {renderViewport('SIDE', 'SIDE')}
-                          {renderViewport('TOP', 'TOP')}
+                          {renderViewport(slotViews[1], slotViews[1], 1, true)}
+                          {renderViewport(slotViews[2], slotViews[2], 2, true)}
                       </div>
                   </div>
               );
           default:
-              return renderViewport('FRONT', 'FRONT');
+              return renderViewport(activeView, activeView, -1, false);
       }
   };
 

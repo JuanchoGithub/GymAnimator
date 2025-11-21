@@ -1,8 +1,9 @@
 
 import React from 'react';
-import { BodyPartType, GymProp, SkeletonState } from '../types';
+import { BodyPartType, GymProp, SkeletonState, PropViewTransform } from '../types';
 import { SKELETON_DEF, SAMPLE_PROPS, MIRROR_MAPPING } from '../constants';
 import { ViewType } from '../types';
+import { synchronizePropViews } from '../utils';
 
 interface SidebarProps {
   selectedBoneId: BodyPartType | null;
@@ -49,6 +50,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const activeBoneDef = SKELETON_DEF.find(b => b.id === selectedBoneId);
   const activeProp = props.find(p => p.id === selectedPropId);
+
+  // Helper to update prop transform with synchronization
+  const updatePropTransform = (propId: string, view: ViewType, field: keyof PropViewTransform, value: number) => {
+      setProps(prevProps => prevProps.map(p => {
+          if (p.id !== propId) return p;
+          
+          const currentTransform = p.transforms[view];
+          const newTransform = { ...currentTransform, [field]: value };
+          
+          // Apply synchronization rules
+          return synchronizePropViews(p, view, newTransform);
+      }));
+  };
 
   return (
     <div className="w-64 bg-gray-800 border-r border-gray-700 p-4 flex flex-col space-y-6 overflow-y-auto">
@@ -165,13 +179,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 min="-100"
                                 max="500"
                                 value={activeProp.transforms[activeView].x}
-                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], x: Number(e.target.value)}}} : p))}
+                                onChange={(e) => updatePropTransform(activeProp.id, activeView, 'x', Number(e.target.value))}
                                 className="flex-1 accent-yellow-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
                             />
                             <input 
                                 type="number" 
                                 value={Math.round(activeProp.transforms[activeView].x)}
-                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], x: Number(e.target.value)}}} : p))}
+                                onChange={(e) => updatePropTransform(activeProp.id, activeView, 'x', Number(e.target.value))}
                                 className="w-12 bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
                             />
                         </div>
@@ -188,13 +202,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 min="-100"
                                 max="600"
                                 value={activeProp.transforms[activeView].y}
-                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], y: Number(e.target.value)}}} : p))}
+                                onChange={(e) => updatePropTransform(activeProp.id, activeView, 'y', Number(e.target.value))}
                                 className="flex-1 accent-yellow-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
                             />
                             <input 
                                 type="number" 
                                 value={Math.round(activeProp.transforms[activeView].y)}
-                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], y: Number(e.target.value)}}} : p))}
+                                onChange={(e) => updatePropTransform(activeProp.id, activeView, 'y', Number(e.target.value))}
                                 className="w-12 bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
                             />
                         </div>
@@ -211,13 +225,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 min="-180"
                                 max="180"
                                 value={activeProp.transforms[activeView].rotation}
-                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], rotation: Number(e.target.value)}}} : p))}
+                                onChange={(e) => updatePropTransform(activeProp.id, activeView, 'rotation', Number(e.target.value))}
                                 className="flex-1 accent-yellow-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
                             />
                             <input 
                                 type="number" 
                                 value={Math.round(activeProp.transforms[activeView].rotation)}
-                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], rotation: Number(e.target.value)}}} : p))}
+                                onChange={(e) => updatePropTransform(activeProp.id, activeView, 'rotation', Number(e.target.value))}
                                 className="w-12 bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
                             />
                         </div>
@@ -236,7 +250,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                     min="0.1"
                                     max="5"
                                     value={activeProp.transforms[activeView].scaleX || 1}
-                                    onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], scaleX: Number(e.target.value)}}} : p))}
+                                    onChange={(e) => updatePropTransform(activeProp.id, activeView, 'scaleX', Number(e.target.value))}
                                     className="w-full bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
                                 />
                             </div>
@@ -252,7 +266,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                     min="0.1"
                                     max="5"
                                     value={activeProp.transforms[activeView].scaleY || 1}
-                                    onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], scaleY: Number(e.target.value)}}} : p))}
+                                    onChange={(e) => updatePropTransform(activeProp.id, activeView, 'scaleY', Number(e.target.value))}
                                     className="w-full bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
                                 />
                             </div>

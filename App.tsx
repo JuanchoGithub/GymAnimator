@@ -8,7 +8,7 @@ import { Canvas } from './components/Canvas';
 import { BodyPartType, Keyframe, SkeletonState, GymProp, PropViewTransform, ViewType, LayoutMode } from './types';
 import { INITIAL_POSE, SAMPLE_PROPS, SKELETON_DEF, MIRROR_MAPPING, IK_CHAINS } from './constants';
 import { generatePropSvg } from './services/geminiService';
-import { getGlobalTransform, solveTwoBoneIK, toDegrees, normalizeAngle, transformPoint, syncDumbbells, exportAnimation, Point, getSnapPointDef } from './utils';
+import { getGlobalTransform, solveTwoBoneIK, toDegrees, normalizeAngle, transformPoint, syncDumbbells, exportAnimation, Point, getSnapPointDef, synchronizePropViews } from './utils';
 
 const SNAP_THRESHOLD = 20;
 const UNSNAP_THRESHOLD = 50;
@@ -34,6 +34,8 @@ const App: React.FC = () => {
   const [exportMode, setExportMode] = useState<'accurate' | 'interpolated'>('accurate');
   const [activeView, setActiveView] = useState<ViewType>('FRONT');
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('SINGLE');
+  // Slot configuration for multi-view modes: 0=Primary, 1=Secondary(Right), 2=Tertiary(Bottom)
+  const [slotViews, setSlotViews] = useState<ViewType[]>(['FRONT', 'SIDE', 'TOP']);
   const [armsInFront, setArmsInFront] = useState(false);
 
   const [attachments, setAttachments] = useState<Record<string, { propId: string, snapPointId: string, rotationOffset: number }>>({});
@@ -241,24 +243,21 @@ const App: React.FC = () => {
       const dx = svgPoint.x - startSvgPoint.x;
       const dy = svgPoint.y - startSvgPoint.y;
 
-      // --- PROP DRAGGING (Independent View) ---
+      // --- PROP DRAGGING (Synchronized Views) ---
       if (dragState.type === 'PROP' && selectedPropId) {
           const updatedProps = props.map(p => {
               if (p.id === selectedPropId) {
                   const newX = dragState.originalX! + dx;
                   const newY = dragState.originalY! + dy;
                   
-                  return {
-                      ...p,
-                      transforms: {
-                          ...p.transforms,
-                          [view]: {
-                              ...p.transforms[view],
-                              x: newX,
-                              y: newY
-                          }
-                      }
+                  const newTransform = {
+                      ...p.transforms[view],
+                      x: newX,
+                      y: newY
                   };
+                  
+                  // Use helper to sync other views based on rules
+                  return synchronizePropViews(p, view, newTransform);
               }
               return p;
           });
@@ -274,30 +273,33 @@ const App: React.FC = () => {
               
               if (attachedHands.length > 0) {
                   let newPose = JSON.parse(JSON.stringify(currentPose));
-                  attachedHands.forEach(([handId, info]) => {
-                      const snapPoint = movingProp.snapPoints.find(sp => sp.id === info.snapPointId);
-                      const spPos = snapPoint ? getSnapPointDef(snapPoint, view) : { x: 0, y: 0 };
-                      const snapGlobal = transformPoint(
-                          spPos.x,
-                          spPos.y,
-                          movingProp.transforms[view]
-                      );
-                      const chain = IK_CHAINS[handId];
-                      if (chain) {
-                          const ikResult = solveTwoBoneIK(chain.upper, chain.lower, snapGlobal, newPose, view);
-                          if (ikResult) {
-                              newPose[chain.upper][view] = ikResult[chain.upper];
-                              newPose[chain.lower][view] = ikResult[chain.lower];
-                          }
-                      }
-                       const handBoneDef = SKELETON_DEF.find(b => b.id === handId);
-                       if(handBoneDef && handBoneDef.parentId) {
-                           const parentGlobal = getGlobalTransform(handBoneDef.parentId, newPose, view);
-                           const offset = info.rotationOffset || 0;
-                           const targetHandGlobal = movingProp.transforms[view].rotation + offset; 
-                           const targetHandLocal = normalizeAngle(targetHandGlobal - parentGlobal.angle);
-                           newPose[handId as BodyPartType][view] = targetHandLocal;
-                       }
+                  // IK updates need to happen in all views potentially if the prop moved in a way that affects them
+                  VIEWS.forEach(v => {
+                    attachedHands.forEach(([handId, info]) => {
+                        const snapPoint = movingProp.snapPoints.find(sp => sp.id === info.snapPointId);
+                        const spPos = snapPoint ? getSnapPointDef(snapPoint, v) : { x: 0, y: 0 };
+                        const snapGlobal = transformPoint(
+                            spPos.x,
+                            spPos.y,
+                            movingProp.transforms[v]
+                        );
+                        const chain = IK_CHAINS[handId];
+                        if (chain) {
+                            const ikResult = solveTwoBoneIK(chain.upper, chain.lower, snapGlobal, newPose, v);
+                            if (ikResult) {
+                                newPose[chain.upper][v] = ikResult[chain.upper];
+                                newPose[chain.lower][v] = ikResult[chain.lower];
+                            }
+                        }
+                        const handBoneDef = SKELETON_DEF.find(b => b.id === handId);
+                        if(handBoneDef && handBoneDef.parentId) {
+                            const parentGlobal = getGlobalTransform(handBoneDef.parentId, newPose, v);
+                            const offset = info.rotationOffset || 0;
+                            const targetHandGlobal = movingProp.transforms[v].rotation + offset; 
+                            const targetHandLocal = normalizeAngle(targetHandGlobal - parentGlobal.angle);
+                            newPose[handId as BodyPartType][v] = targetHandLocal;
+                        }
+                    });
                   });
                   setCurrentPose(newPose);
                   setKeyframes(prev => prev.map(kf => {
@@ -612,7 +614,7 @@ const App: React.FC = () => {
       setSelectedBoneId(null);
   };
 
-  const handleExport = () => exportAnimation(keyframes, props, attachments, exportMode, layoutMode, activeView);
+  const handleExport = () => exportAnimation(keyframes, props, attachments, exportMode, layoutMode, activeView, slotViews);
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-900 text-gray-100 overflow-hidden">
@@ -663,6 +665,13 @@ const App: React.FC = () => {
             armsInFront={armsInFront}
             activeView={activeView}
             layoutMode={layoutMode}
+            slotViews={slotViews}
+            onUpdateSlotView={(index, view) => {
+                const newSlots = [...slotViews];
+                newSlots[index] = view;
+                setSlotViews(newSlots);
+                setActiveView(view);
+            }}
             onBoneMouseDown={handleBoneMouseDown}
             onPropMouseDown={handlePropMouseDown}
             onSvgMouseMove={handleSvgMouseMove}

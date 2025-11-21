@@ -79,6 +79,34 @@ export const getSnapPointDef = (sp: SnapPoint, view: ViewType) => {
     return { x: sp.x, y: sp.y, visible: true };
 };
 
+export const synchronizePropViews = (prop: GymProp, changedView: ViewType, newTransform: PropViewTransform): GymProp => {
+    const updated = { 
+        ...prop, 
+        transforms: { 
+            ...prop.transforms, 
+            [changedView]: newTransform 
+        } 
+    };
+
+    // Rules:
+    // 1. Y position for Front and Side views are same.
+    // 2. X position for Front and Top views are same.
+    // 3. Y position for Top view is same as X position for Side view.
+
+    if (changedView === 'FRONT') {
+        updated.transforms.SIDE.y = newTransform.y; // Rule 1
+        updated.transforms.TOP.x = newTransform.x;  // Rule 2
+    } else if (changedView === 'SIDE') {
+        updated.transforms.FRONT.y = newTransform.y; // Rule 1
+        updated.transforms.TOP.y = newTransform.x;   // Rule 3
+    } else if (changedView === 'TOP') {
+        updated.transforms.FRONT.x = newTransform.x; // Rule 2
+        updated.transforms.SIDE.x = newTransform.y;  // Rule 3
+    }
+
+    return updated;
+};
+
 // --- Inverse Kinematics (2-Bone) ---
 
 export const solveTwoBoneIK = (
@@ -217,6 +245,10 @@ export const syncDumbbells = (
                     Math.abs(transform.y - newY) > 0.1 || 
                     Math.abs(transform.rotation - newRot) > 0.1
                 ) {
+                    // When syncing via IK/Attachment, we only update the specific view
+                    // Because attachments might be fundamentally different per view (2D approximation)
+                    // However, if we wanted strict 3D-like sync here, we would need a different approach.
+                    // For now, attachment overrides the strict sync rules locally.
                     updatedProps[propIndex] = {
                         ...updatedProps[propIndex],
                         transforms: {
@@ -244,38 +276,43 @@ export const exportAnimation = (
     attachments: Record<string, { propId: string, snapPointId: string, rotationOffset: number }>,
     mode: 'accurate' | 'interpolated' = 'accurate',
     layoutMode: LayoutMode,
-    activeView: ViewType
+    activeView: ViewType,
+    slotViews: ViewType[] = ['FRONT', 'SIDE', 'TOP']
 ) => {
     // 1. Determine Views to Export based on Layout
-    let viewsToExport: { view: ViewType, x: number, y: number }[] = [];
+    // Structure: { view, x, y, width, height, offsetX, offsetY }
+    let viewsToExport: { view: ViewType, x: number, y: number, w: number, h: number, ox: number, oy: number }[] = [];
     let width = 400;
     let height = 500;
 
     switch(layoutMode) {
         case 'SINGLE':
-            viewsToExport = [{ view: activeView, x: 0, y: 0 }];
+            viewsToExport = [{ view: activeView, x: 0, y: 0, w: 400, h: 500, ox: 0, oy: 0 }];
             break;
         case 'SIDE_BY_SIDE':
             width = 800;
             viewsToExport = [
-                { view: 'FRONT', x: 0, y: 0 },
-                { view: 'SIDE', x: 400, y: 0 }
+                { view: slotViews[0], x: 0, y: 0, w: 400, h: 500, ox: 0, oy: 0 },
+                { view: slotViews[1], x: 400, y: 0, w: 400, h: 500, ox: 0, oy: 0 }
             ];
             break;
         case 'TOP_BOTTOM':
             height = 1000;
             viewsToExport = [
-                { view: 'FRONT', x: 0, y: 0 },
-                { view: 'TOP', x: 0, y: 500 }
+                { view: slotViews[0], x: 0, y: 0, w: 400, h: 500, ox: 0, oy: 0 },
+                { view: slotViews[2], x: 0, y: 500, w: 400, h: 500, ox: 0, oy: 0 }
             ];
             break;
         case 'THREE_SPLIT':
             width = 800;
             height = 1000;
             viewsToExport = [
-                { view: 'FRONT', x: 0, y: 0 },
-                { view: 'SIDE', x: 400, y: 0 },
-                { view: 'TOP', x: 400, y: 500 }
+                // Left Column: Tall (1000px), Content centered vertically (offsetY = 250) to match editor "meet" aspect ratio behavior
+                { view: slotViews[0], x: 0, y: 0, w: 400, h: 1000, ox: 0, oy: 250 },
+                // Right Top
+                { view: slotViews[1], x: 400, y: 0, w: 400, h: 500, ox: 0, oy: 0 },
+                // Right Bottom
+                { view: slotViews[2], x: 400, y: 500, w: 400, h: 500, ox: 0, oy: 0 }
             ];
             break;
     }
@@ -288,11 +325,12 @@ export const exportAnimation = (
         const el = document.getElementById(`viewport-${v.view}`);
         const svg = el?.querySelector('svg');
         if (svg) {
+            // Draw Background for this slot (The viewport boundary)
+            svgContentInner += `<rect x="${v.x}" y="${v.y}" width="${v.w}" height="${v.h}" fill="#f3f4f6" stroke="#e5e7eb" stroke-width="2"/>\n`;
+
             // Extract inner contents (bones, props)
-            // We wrap them in a group to position them according to the layout
-            svgContentInner += `<g transform="translate(${v.x}, ${v.y})">\n`;
-            // Add a background rect for clarity
-            svgContentInner += `<rect width="400" height="500" fill="#f3f4f6" stroke="#e5e7eb" stroke-width="2"/>\n`;
+            // We wrap them in a group to position them according to the layout + specific centering offset
+            svgContentInner += `<g transform="translate(${v.x + v.ox}, ${v.y + v.oy})">\n`;
             
             // Use XMLSerializer to ensure valid XML (fixes tag mismatch errors like <circle>)
             Array.from(svg.children).forEach(child => {
@@ -302,10 +340,9 @@ export const exportAnimation = (
                 str = str.replace(/stroke="#facc15"/g, 'stroke="none"');
                 
                 // Remove pulsing selection circles (hiding them)
-                // Regex matches class attributes containing 'animate-pulse' and replaces the whole attribute with display="none"
                 str = str.replace(/class="[^"]*animate-pulse[^"]*"/g, 'display="none"'); 
                 
-                // Remove namespace clutter if repeated (optional, but nice for readability)
+                // Remove namespace clutter if repeated
                 str = str.replace(/ xmlns="http:\/\/www.w3.org\/2000\/svg"/g, '');
 
                 svgContentInner += str + '\n';
@@ -428,13 +465,15 @@ export const exportAnimation = (
             css += `\n@keyframes ${animName} {`;
             bakedFrames.forEach((frame) => {
                 const percentage = (frame.time / totalDuration) * 100;
-                const angle = frame.pose[bone.id][view] || 0;
-                const viewDef = bone.views[view];
-                if (viewDef) {
-                     css += `\n  ${percentage.toFixed(2)}% { transform: translate(${viewDef.originX}px, ${viewDef.originY}px) rotate(${angle.toFixed(2)}deg); }`;
-                }
+                
+                // Calculate Global Transform specifically for Export CSS
+                const globalT = getGlobalTransform(bone.id, frame.pose, view);
+                
+                css += `\n  ${percentage.toFixed(2)}% { transform: translate(${globalT.x.toFixed(2)}px, ${globalT.y.toFixed(2)}px) rotate(${globalT.angle.toFixed(2)}deg); }`;
             });
             css += `\n}`;
+            // The animation applies to the element ID. 
+            // The element is inside a <g> translated by (v.x + v.ox, v.y + v.oy), so the 0,0 origin is correct relative to that group.
             css += `\n#bone-${bone.id}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; transform-origin: 0px 0px; }`;
         });
 

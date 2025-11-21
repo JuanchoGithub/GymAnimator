@@ -1,6 +1,4 @@
 
-
-
 import React from 'react';
 import { Bone, SkeletonState, BodyPartType, ViewType } from '../types';
 import { SKELETON_DEF } from '../constants';
@@ -76,8 +74,8 @@ const Character: React.FC<CharacterProps> = ({
                 <path
                   d={viewDef.path}
                   fill={bone.color}
-                  stroke={isSelected ? "#facc15" : "rgba(0,0,0,0.1)"}
-                  strokeWidth={isSelected ? 3 : 1}
+                  stroke={isSelected ? "#facc15" : "none"}
+                  strokeWidth={isSelected ? 3 : 0}
                   className="transition-colors duration-150 ease-in-out hover:fill-yellow-500/20 cursor-pointer pointer-events-auto"
                 />
 
@@ -120,3 +118,4 @@ const Character: React.FC<CharacterProps> = ({
 };
 
 export default Character;
+    

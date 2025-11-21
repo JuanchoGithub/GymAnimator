@@ -2,6 +2,7 @@
 import React from 'react';
 import Character from './Character';
 import { GymProp, SkeletonState, BodyPartType, ViewType, LayoutMode } from '../types';
+import { getSnapPointDef } from '../utils';
 
 interface CanvasProps {
     svgRef: React.RefObject<SVGSVGElement>;
@@ -52,6 +53,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
           // Use independent view transform
           const transform = prop.transforms[view];
+          const isDraggingBone = dragState?.isDragging && dragState.type === 'BONE';
 
           return (
             <g 
@@ -76,6 +78,44 @@ export const Canvas: React.FC<CanvasProps> = ({
                     strokeWidth={prop.strokeWidth || 0}
                 />
                  {isSelected && <circle r="3" fill="#facc15" stroke="black" strokeWidth="1" />}
+
+                 {/* Visual Snap Points (Only when dragging a bone) */}
+                 {isDraggingBone && prop.snapPoints.map(sp => {
+                     const { x, y, visible } = getSnapPointDef(sp, view);
+                     if (!visible) return null;
+
+                     // Calculate inverse scale to keep snap points circular and consistent size
+                     const baseRadius = 5;
+                     const scaleX = transform.scaleX || 1;
+                     const scaleY = transform.scaleY || 1;
+                     const rx = baseRadius / Math.abs(scaleX);
+                     const ry = baseRadius / Math.abs(scaleY);
+                     const strokeWidth = 1.5 / Math.max(Math.abs(scaleX), Math.abs(scaleY));
+
+                     return (
+                         <g key={sp.id}>
+                             <ellipse 
+                                cx={x} 
+                                cy={y} 
+                                rx={rx} 
+                                ry={ry} 
+                                fill="#22c55e" 
+                                stroke="white" 
+                                strokeWidth={strokeWidth}
+                                className="pointer-events-none animate-pulse"
+                                opacity="0.9"
+                             />
+                             <ellipse 
+                                cx={x} 
+                                cy={y} 
+                                rx={rx * 0.3} 
+                                ry={ry * 0.3} 
+                                fill="white" 
+                                className="pointer-events-none"
+                             />
+                         </g>
+                     );
+                 })}
             </g>
           );
       };

@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import { BodyPartType, Bone, SkeletonState, GymProp, ViewType } from './types';
 
 // --- SKELETON DEFINITIONS ---
@@ -110,7 +105,7 @@ export const SKELETON_DEF: Bone[] = [
     { p: "M-11,0 C-18,20 -14,45 -8,60 L8,60 C11,45 12,15 11,0 Z", x: 0, y: 70, z: 5 },
     { p: "M-11,0 C-15,20 -15,45 -8,60 L8,60 C15,45 15,20 11,0 Z", x: 0, y: 70, z: 5 }
   ),
-  createBone({ id: BodyPartType.FOOT_R, parentId: BodyPartType.LOWER_LEG_R, name: "Foot R", defaultAngle: 90, color: "#ffffff", length: 20 },
+  createBone({ id: BodyPartType.FOOT_R, parentId: BodyPartType.LOWER_LEG_R, name: "Foot R", defaultAngle: -90, color: "#ffffff", length: 20 },
     { p: "M-6,0 L6,0 L6,8 C6,18 2,22 -4,22 L-6,22 Z", x: 0, y: 60, z: 4 },
     { p: "M-6,0 L6,0 L6,8 L16,22 L-6,22 Z", x: 0, y: 60, z: 4 }, 
     { p: "M-7,0 L7,0 L7,25 L-7,25 Z", x: 0, y: 60, z: 4 }
@@ -152,26 +147,48 @@ const createProp = (base: Partial<GymProp>, frontV: string, sideV: string, topV:
     } as any;
 };
 
+const hiddenInSide = { SIDE: { x: 0, y: 0, visible: false } };
+
 export const SAMPLE_PROPS = [
   createProp(
     {
         name: 'Barbell', 
-        views: { FRONT: { viewBox: "-190 -40 380 80" } } as any,
-        snapPoints: [{ id: 'center', name: 'Center', x: 0, y: 0 }, { id: 'wide_l', name: 'Wide L', x: -110, y: 0 }, { id: 'wide_r', name: 'Wide R', x: 110, y: 0 }]
+        views: { FRONT: { viewBox: "-190 -40 380 80" }, TOP: { viewBox: "-190 -40 380 80" } } as any,
+        snapPoints: [
+            { id: 'center', name: 'Center', x: 0, y: 0 }, 
+            { id: 'close_l', name: 'Close L', x: -30, y: 0, perView: hiddenInSide }, 
+            { id: 'close_r', name: 'Close R', x: 30, y: 0, perView: hiddenInSide },
+            { id: 'medium_l', name: 'Medium L', x: -60, y: 0, perView: hiddenInSide }, 
+            { id: 'medium_r', name: 'Medium R', x: 60, y: 0, perView: hiddenInSide },
+            { id: 'wide_l', name: 'Wide L', x: -100, y: 0, perView: hiddenInSide }, 
+            { id: 'wide_r', name: 'Wide R', x: 100, y: 0, perView: hiddenInSide },
+            { id: 'outside_l', name: 'Outside L', x: -145, y: 0, perView: hiddenInSide }, 
+            { id: 'outside_r', name: 'Outside R', x: 145, y: 0, perView: hiddenInSide }
+        ]
     },
+    // Front: Bar, Inner stops, Plates
     'M-180,-4 L180,-4 L180,4 L-180,4 Z M-140,-35 L-130,-35 L-130,35 L-140,35 Z M-152,-35 L-142,-35 L-142,35 L-152,35 Z M130,-35 L140,-35 L140,35 L130,35 Z M142,-35 L152,-35 L152,35 L142,35 Z',
-    'M-4,-4 L4,-4 L4,4 L-4,4 Z M-35,-35 L35,-35 L35,35 L-35,35 Z', // Side: Just the plate and end of bar
-    'M-180,-4 L180,-4 L180,4 L-180,4 Z M-140,-5 L-130,-5 L-130,5 L-140,5 Z M130,-5 L140,-5 L140,5 L130,5 Z' // Top: Bar and thin plates
+    // Side: Large rounded plate, small bar end
+    'M-35,0 A35,35 0 1,0 35,0 A35,35 0 1,0 -35,0 Z M-4,0 A4,4 0 1,0 4,0 A4,4 0 1,0 -4,0 Z', 
+    // Top: Same as Front (Rotationally symmetric)
+    'M-180,-4 L180,-4 L180,4 L-180,4 Z M-140,-35 L-130,-35 L-130,35 L-140,35 Z M-152,-35 L-142,-35 L-142,35 L-152,35 Z M130,-35 L140,-35 L140,35 L130,35 Z M142,-35 L152,-35 L152,35 L142,35 Z'
   ),
   createProp(
       {
         name: 'Dumbbell',
-        views: { FRONT: { viewBox: "-35 -15 70 30" } } as any,
-        snapPoints: [{ id: 'center', name: 'Handle', x: 0, y: 0 }]
+        views: { FRONT: { viewBox: "-35 -15 70 30" }, TOP: { viewBox: "-35 -15 70 30" } } as any,
+        snapPoints: [
+            { id: 'center', name: 'Handle', x: 0, y: 0 },
+            { id: 'disc_l', name: 'Disc L', x: -22, y: 0, perView: hiddenInSide },
+            { id: 'disc_r', name: 'Disc R', x: 22, y: 0, perView: hiddenInSide }
+        ]
       },
+      // Front: Handle, weights
       'M-30,-3 L30,-3 L30,3 L-30,3 Z M-30,-12 L-15,-12 L-15,12 L-30,12 Z M15,-12 L30,-12 L30,12 L15,12 Z',
-      'M-3,-3 L3,-3 L3,3 L-3,3 Z M-12,-12 L12,-12 L12,12 L-12,12 Z', // Side: Hexagon/Circle
-      'M-30,-3 L30,-3 L30,3 L-30,3 Z M-30,-12 L-15,-12 L-15,12 L-30,12 Z' // Top: Looks like front
+      // Side: Round Weight
+      'M-12,0 A12,12 0 1,0 12,0 A12,12 0 1,0 -12,0 Z', 
+      // Top: Same as Front
+      'M-30,-3 L30,-3 L30,3 L-30,3 Z M-30,-12 L-15,-12 L-15,12 L-30,12 Z M15,-12 L30,-12 L30,12 L15,12 Z'
   ),
   createProp(
       {

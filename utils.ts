@@ -1,5 +1,5 @@
 
-import { BodyPartType, SkeletonState, GymProp, Keyframe, PropViewTransform, ViewType, LayoutMode } from "./types";
+import { BodyPartType, SkeletonState, GymProp, Keyframe, PropViewTransform, ViewType, LayoutMode, SnapPoint } from "./types";
 import { SKELETON_DEF, IK_CHAINS } from "./constants";
 
 // --- Geometry Helpers ---
@@ -71,6 +71,14 @@ export const transformPoint = (x: number, y: number, transform: PropViewTransfor
     };
 };
 
+export const getSnapPointDef = (sp: SnapPoint, view: ViewType) => {
+    const override = sp.perView?.[view];
+    if (override) {
+        return { x: override.x, y: override.y, visible: override.visible !== false };
+    }
+    return { x: sp.x, y: sp.y, visible: true };
+};
+
 // --- Inverse Kinematics (2-Bone) ---
 
 export const solveTwoBoneIK = (
@@ -125,11 +133,18 @@ export const solveTwoBoneIK = (
     let bendSign = 1;
     const isLeg = upperId.includes("LEG");
 
-    if (upperId.includes("_L")) {
-        bendSign = isLeg ? 1 : -1;
-    } 
-    if (upperId.includes("_R")) {
+    if (view === 'SIDE') {
+        // In side view, bend direction should be consistent (anatomical) regardless of L/R side.
+        // Matches Right side behavior: Arm(1), Leg(-1)
         bendSign = isLeg ? -1 : 1;
+    } else {
+        // Front/Top view: Mirror behavior
+        if (upperId.includes("_L")) {
+            bendSign = isLeg ? 1 : -1;
+        } 
+        if (upperId.includes("_R")) {
+            bendSign = isLeg ? -1 : 1;
+        }
     }
 
     // Calculate Global Angles
@@ -179,7 +194,8 @@ export const syncDumbbells = (
 
             if (prop.name.toLowerCase().includes('dumbbell')) {
                 const handGlobal = getGlobalTransform(handId as BodyPartType, pose, view);
-                const snapPoint = prop.snapPoints.find(sp => sp.id === info.snapPointId) || { x: 0, y: 0 };
+                const snapPoint = prop.snapPoints.find(sp => sp.id === info.snapPointId);
+                const spPos = snapPoint ? getSnapPointDef(snapPoint, view) : {x: 0, y: 0};
 
                 // 1. Sync Rotation
                 const offset = info.rotationOffset || 0;
@@ -187,8 +203,8 @@ export const syncDumbbells = (
                 
                 // 2. Sync Position
                 const rad = toRadians(newRot);
-                const sx = snapPoint.x * transform.scaleX;
-                const sy = snapPoint.y * transform.scaleY;
+                const sx = spPos.x * transform.scaleX;
+                const sy = spPos.y * transform.scaleY;
                 
                 const rx = sx * Math.cos(rad) - sy * Math.sin(rad);
                 const ry = sx * Math.sin(rad) + sy * Math.cos(rad);
@@ -362,7 +378,8 @@ export const exportAnimation = (
                     if (originalProp && pTransform) {
                         const snapPoint = originalProp.snapPoints.find(sp => sp.id === info.snapPointId);
                         if (snapPoint) {
-                            const targetGlobal = transformPoint(snapPoint.x, snapPoint.y, pTransform);
+                            const spPos = getSnapPointDef(snapPoint, view);
+                            const targetGlobal = transformPoint(spPos.x, spPos.y, pTransform);
                             const chain = IK_CHAINS[boneId];
                             if (chain) {
                                 const ikResult = solveTwoBoneIK(chain.upper, chain.lower, targetGlobal, interpolatedPose, view);

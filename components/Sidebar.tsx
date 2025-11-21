@@ -223,6 +223,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         </div>
                     </div>
 
+                    {/* Scale X / Y (Widening) */}
+                    <div className="grid grid-cols-2 gap-2">
+                         <div>
+                            <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                                <span>Scale X</span>
+                            </div>
+                            <div className="flex items-center space-x-1">
+                                <input 
+                                    type="number" 
+                                    step="0.1"
+                                    min="0.1"
+                                    max="5"
+                                    value={activeProp.transforms[activeView].scaleX || 1}
+                                    onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], scaleX: Number(e.target.value)}}} : p))}
+                                    className="w-full bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
+                                />
+                            </div>
+                         </div>
+                         <div>
+                            <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                                <span>Scale Y</span>
+                            </div>
+                            <div className="flex items-center space-x-1">
+                                <input 
+                                    type="number" 
+                                    step="0.1"
+                                    min="0.1"
+                                    max="5"
+                                    value={activeProp.transforms[activeView].scaleY || 1}
+                                    onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], scaleY: Number(e.target.value)}}} : p))}
+                                    className="w-full bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
+                                />
+                            </div>
+                         </div>
+                    </div>
+
                     <button 
                         onClick={() => onDeleteProp(activeProp.id)}
                         className="w-full py-2 mt-4 bg-red-900/30 hover:bg-red-900/50 text-red-400 text-xs rounded border border-red-900/50 transition-colors flex items-center justify-center"

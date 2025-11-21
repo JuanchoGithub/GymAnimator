@@ -8,7 +8,7 @@ import { Canvas } from './components/Canvas';
 import { BodyPartType, Keyframe, SkeletonState, GymProp, PropViewTransform, ViewType, LayoutMode } from './types';
 import { INITIAL_POSE, SAMPLE_PROPS, SKELETON_DEF, MIRROR_MAPPING, IK_CHAINS } from './constants';
 import { generatePropSvg } from './services/geminiService';
-import { getGlobalTransform, solveTwoBoneIK, toDegrees, normalizeAngle, transformPoint, syncDumbbells, exportAnimation, Point } from './utils';
+import { getGlobalTransform, solveTwoBoneIK, toDegrees, normalizeAngle, transformPoint, syncDumbbells, exportAnimation, Point, getSnapPointDef } from './utils';
 
 const SNAP_THRESHOLD = 20;
 const UNSNAP_THRESHOLD = 50;
@@ -141,7 +141,8 @@ const App: React.FC = () => {
                 if (attachedProp) {
                     const snapPoint = attachedProp.snapPoints.find(sp => sp.id === info.snapPointId);
                     if (snapPoint) {
-                        const targetGlobal = transformPoint(snapPoint.x, snapPoint.y, attachedProp.transforms[view]);
+                        const spPos = getSnapPointDef(snapPoint, view);
+                        const targetGlobal = transformPoint(spPos.x, spPos.y, attachedProp.transforms[view]);
                         const chain = IK_CHAINS[boneId];
                         if (chain) {
                             const ikResult = solveTwoBoneIK(chain.upper, chain.lower, targetGlobal, interpolatedPose, view);
@@ -274,9 +275,11 @@ const App: React.FC = () => {
               if (attachedHands.length > 0) {
                   let newPose = JSON.parse(JSON.stringify(currentPose));
                   attachedHands.forEach(([handId, info]) => {
+                      const snapPoint = movingProp.snapPoints.find(sp => sp.id === info.snapPointId);
+                      const spPos = snapPoint ? getSnapPointDef(snapPoint, view) : { x: 0, y: 0 };
                       const snapGlobal = transformPoint(
-                          movingProp.snapPoints.find(sp => sp.id === info.snapPointId)?.x || 0,
-                          movingProp.snapPoints.find(sp => sp.id === info.snapPointId)?.y || 0,
+                          spPos.x,
+                          spPos.y,
                           movingProp.transforms[view]
                       );
                       const chain = IK_CHAINS[handId];
@@ -325,7 +328,10 @@ const App: React.FC = () => {
 
                   props.forEach(prop => {
                       prop.snapPoints.forEach(sp => {
-                          const globalSp = transformPoint(sp.x, sp.y, prop.transforms[view]);
+                          const { x, y, visible } = getSnapPointDef(sp, view);
+                          if (!visible) return; // Skip hidden snap points
+
+                          const globalSp = transformPoint(x, y, prop.transforms[view]);
                           const dist = Math.sqrt(Math.pow(globalSp.x - svgPoint.x, 2) + Math.pow(globalSp.y - svgPoint.y, 2));
                           if (dist < nearestDist) {
                               nearestDist = dist;
@@ -343,7 +349,8 @@ const App: React.FC = () => {
                       const isDumbbell = attachedProp?.name.toLowerCase().includes('dumbbell');
                       
                       if (attachedProp && attachedSp) {
-                           const anchorPos = transformPoint(attachedSp.x, attachedSp.y, attachedProp.transforms[view]);
+                           const spPos = getSnapPointDef(attachedSp, view);
+                           const anchorPos = transformPoint(spPos.x, spPos.y, attachedProp.transforms[view]);
                            const distFromAnchor = Math.sqrt(Math.pow(anchorPos.x - svgPoint.x, 2) + Math.pow(anchorPos.y - svgPoint.y, 2));
                            
                            if (distFromAnchor > UNSNAP_THRESHOLD) {

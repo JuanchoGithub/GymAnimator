@@ -67,6 +67,7 @@ export interface SnapPoint {
   name: string;
   x: number;
   y: number;
+  perView?: Partial<Record<ViewType, { x: number; y: number; visible?: boolean }>>;
 }
 
 export interface PropViewDefinition {

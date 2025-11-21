@@ -1,4 +1,9 @@
 
+
+
+
+
+
 import { BodyPartType, Bone, SkeletonState, GymProp, ViewType } from './types';
 
 // --- SKELETON DEFINITIONS ---
@@ -22,92 +27,93 @@ const createBone = (
 
 export const SKELETON_DEF: Bone[] = [
   createBone({ id: BodyPartType.ROOT, parentId: null, name: "Waist", color: "#d97706", originX: 200, originY: 320 },
-    { p: "M-17,-6 L17,-6 L17,6 L-17,6 Z", x: 200, y: 320, z: 15 }, // Front
-    { p: "M-10,-6 L10,-6 L10,6 L-10,6 Z", x: 200, y: 320, z: 15 }, // Side (thinner)
-    { p: "M-17,-10 L17,-10 L17,10 L-17,10 Z", x: 200, y: 200, z: 15 }  // Top (looking down at waist)
+    { p: "M-17,-6 L17,-6 L17,6 L-17,6 Z", x: 200, y: 320, z: 15 }, 
+    { p: "M-16,-6 L16,-6 L16,6 L-16,6 Z", x: 200, y: 320, z: 15 }, // Side: Thicker
+    { p: "M-18,-12 L18,-12 L18,12 L-18,12 Z", x: 200, y: 200, z: 5 }  // Top: Thicker, Z=5 (Below Torso)
   ),
   createBone({ id: BodyPartType.TORSO, parentId: BodyPartType.ROOT, name: "Torso", color: "#3b82f6", jointRadius: 15 },
     { p: "M-15,0 C-15,0 -30,-45 -36,-75 L36,-75 C30,-45 15,0 15,0 Z", x: 0, y: 0, z: 10 },
-    { p: "M-12,0 L-12,-75 L18,-75 C22,-45 20,0 12,0 Z", x: 0, y: 0, z: 10 }, // Side: Kyphosis curve
-    { p: "M-36,-15 L36,-15 L36,15 L-36,15 Z", x: 0, y: 0, z: 10 } // Top: Cross section shoulders
+    { p: "M-15,0 C-15,-10 -18,-40 -20,-75 L28,-75 C34,-45 25,-10 15,0 Z", x: 0, y: 0, z: 10 }, // Side: Chest/Lat spread
+    { p: "M-42,-18 C-42,-18 0,-26 42,-18 L42,18 C42,18 0,26 -42,18 Z", x: 0, y: 0, z: 10 } // Top: Broad oval shoulders
   ),
   createBone({ id: BodyPartType.NECK, parentId: BodyPartType.TORSO, name: "Neck", color: "#fca5a5", jointRadius: 8 },
     { p: "M-7,0 L7,0 L7,-12 L-7,-12 Z", x: 0, y: -75, z: 9 },
-    { p: "M-6,0 L6,0 L8,-12 L-4,-12 Z", x: 4, y: -75, z: 9 }, // Side: angled forward
-    { p: "M-7,-7 L7,-7 L7,7 L-7,7 Z", x: 0, y: -10, z: 9 } // Top: circle-ish
+    { p: "M-8,0 L8,0 L10,-12 L-4,-12 Z", x: 4, y: -75, z: 9 }, // Side: Thicker, angled
+    { p: "M-9,-9 L9,-9 L9,9 L-9,9 Z", x: 0, y: -10, z: 11 } // Top: Z=11 (Above Torso)
   ),
   createBone({ id: BodyPartType.HEAD, parentId: BodyPartType.NECK, name: "Head", color: "#fca5a5", jointRadius: 0 },
+    // Removed the second shape (cranium cap) which looked like a bandana
     { p: "M-9,10 L9,10 L13,-5 L14,-25 C14,-45 8,-50 0,-50 C-8,-50 -14,-45 -14,-25 L-13,-5 Z", x: 0, y: -12, z: 20 },
-    { p: "M-10,10 L10,10 L14,-5 L14,-25 C14,-45 0,-50 -10,-45 L-10,-25 L-14,-5 Z", x: 2, y: -10, z: 20 }, // Side profile
-    { p: "M-12,-12 L12,-12 L12,12 L-12,12 Z", x: 0, y: 0, z: 20 } // Top of head
+    { p: "M-11,10 L11,10 L15,-5 L15,-25 C15,-45 0,-50 -11,-45 L-11,-25 L-15,-5 Z", x: 2, y: -10, z: 20 }, 
+    { p: "M-13,-13 L13,-13 L13,13 L-13,13 Z", x: 0, y: 0, z: 20 } 
   ),
   createBone({ id: BodyPartType.HIPS, parentId: BodyPartType.ROOT, name: "Hips", color: "#1f2937", jointRadius: 16 },
     { p: "M-16,0 L16,0 C16,0 20,20 14,25 L-14,25 C-20,20 -16,0 -16,0 Z", x: 0, y: 0, z: 12 },
-    { p: "M-14,0 L14,0 L16,25 L-12,25 Z", x: 0, y: 0, z: 12 }, // Side
-    { p: "M-16,-14 L16,-14 L16,14 L-16,14 Z", x: 0, y: 0, z: 12 } // Top
+    { p: "M-16,0 L16,0 C20,10 20,20 16,25 L-18,25 C-24,15 -22,5 -16,0 Z", x: 0, y: 0, z: 8 }, // Side: Glutes
+    { p: "M-18,-16 L18,-16 L18,16 L-18,16 Z", x: 0, y: 0, z: 4 } // Top: Z=4 (Below Root)
   ),
   // Left Arm
   createBone({ id: BodyPartType.UPPER_ARM_L, parentId: BodyPartType.TORSO, name: "Upper Arm L", defaultAngle: 45, color: "#fca5a5", length: 60 },
     { p: "M-12,0 C-17,15 -17,40 -10,60 L10,60 C17,40 17,15 12,0 Z", x: -30, y: -70, z: 5 },
-    { p: "M-10,0 L10,0 L8,60 L-8,60 Z", x: 0, y: -70, z: 5 }, // Side cylinder
-    { p: "M-10,0 L10,0 L8,60 L-8,60 Z", x: -35, y: 0, z: 5 } // Top cylinder (projection)
+    { p: "M-13,0 C-20,20 -18,45 -11,60 L11,60 C18,45 20,20 13,0 Z", x: 0, y: -70, z: 5 }, // Side: Buff
+    { p: "M-13,0 C-18,20 -18,40 -11,60 L11,60 C18,40 18,20 13,0 Z", x: -35, y: 0, z: 5 } // Top: Buff
   ),
   createBone({ id: BodyPartType.LOWER_ARM_L, parentId: BodyPartType.UPPER_ARM_L, name: "Lower Arm L", defaultAngle: 10, color: "#fca5a5", length: 50 },
     { p: "M-10,0 C-13,10 -12,35 -7,50 L7,50 C12,35 13,10 10,0 Z", x: 0, y: 60, z: 4 },
-    { p: "M-8,0 L8,0 L6,50 L-6,50 Z", x: 0, y: 60, z: 4 },
-    { p: "M-8,0 L8,0 L6,50 L-6,50 Z", x: 0, y: 60, z: 4 }
+    { p: "M-11,0 C-15,15 -13,35 -8,50 L8,50 C13,35 15,15 11,0 Z", x: 0, y: 60, z: 4 },
+    { p: "M-11,0 C-15,15 -13,35 -8,50 L8,50 C13,35 15,15 11,0 Z", x: 0, y: 60, z: 4 }
   ),
   createBone({ id: BodyPartType.HAND_L, parentId: BodyPartType.LOWER_ARM_L, name: "Hand L", color: "#fca5a5", length: 15 },
     { p: "M-6,0 L6,0 L6,0 L5,15 L-5,15 Z", x: 0, y: 50, z: 3 },
-    { p: "M-6,0 L6,0 L6,0 L5,15 L-5,15 Z", x: 0, y: 50, z: 3 },
-    { p: "M-6,0 L6,0 L6,0 L5,15 L-5,15 Z", x: 0, y: 50, z: 3 }
+    { p: "M-7,0 L7,0 L7,5 L6,15 L-6,15 L-7,5 Z", x: 0, y: 50, z: 3 },
+    { p: "M-7,0 L7,0 L7,5 L6,15 L-6,15 L-7,5 Z", x: 0, y: 50, z: 3 }
   ),
   // Right Arm
   createBone({ id: BodyPartType.UPPER_ARM_R, parentId: BodyPartType.TORSO, name: "Upper Arm R", defaultAngle: -45, color: "#fca5a5", length: 60 },
     { p: "M-12,0 C-17,15 -17,40 -10,60 L10,60 C17,40 17,15 12,0 Z", x: 30, y: -70, z: 5 },
-    { p: "M-10,0 L10,0 L8,60 L-8,60 Z", x: 0, y: -70, z: 5 },
-    { p: "M-10,0 L10,0 L8,60 L-8,60 Z", x: 35, y: 0, z: 5 }
+    { p: "M-13,0 C-20,20 -18,45 -11,60 L11,60 C18,45 20,20 13,0 Z", x: 0, y: -70, z: 25 },
+    { p: "M-13,0 C-18,20 -18,40 -11,60 L11,60 C18,40 18,20 13,0 Z", x: 35, y: 0, z: 5 }
   ),
   createBone({ id: BodyPartType.LOWER_ARM_R, parentId: BodyPartType.UPPER_ARM_R, name: "Lower Arm R", defaultAngle: -10, color: "#fca5a5", length: 50 },
     { p: "M-10,0 C-13,10 -12,35 -7,50 L7,50 C12,35 13,10 10,0 Z", x: 0, y: 60, z: 4 },
-    { p: "M-8,0 L8,0 L6,50 L-6,50 Z", x: 0, y: 60, z: 4 },
-    { p: "M-8,0 L8,0 L6,50 L-6,50 Z", x: 0, y: 60, z: 4 }
+    { p: "M-11,0 C-15,15 -13,35 -8,50 L8,50 C13,35 15,15 11,0 Z", x: 0, y: 60, z: 26 },
+    { p: "M-11,0 C-15,15 -13,35 -8,50 L8,50 C13,35 15,15 11,0 Z", x: 0, y: 60, z: 4 }
   ),
   createBone({ id: BodyPartType.HAND_R, parentId: BodyPartType.LOWER_ARM_R, name: "Hand R", color: "#fca5a5", length: 15 },
     { p: "M-6,0 L6,0 L6,0 L5,15 L-5,15 Z", x: 0, y: 50, z: 3 },
-    { p: "M-6,0 L6,0 L6,0 L5,15 L-5,15 Z", x: 0, y: 50, z: 3 },
-    { p: "M-6,0 L6,0 L6,0 L5,15 L-5,15 Z", x: 0, y: 50, z: 3 }
+    { p: "M-7,0 L7,0 L7,5 L6,15 L-6,15 L-7,5 Z", x: 0, y: 50, z: 27 },
+    { p: "M-7,0 L7,0 L7,5 L6,15 L-6,15 L-7,5 Z", x: 0, y: 50, z: 3 }
   ),
   // Legs
   createBone({ id: BodyPartType.UPPER_LEG_L, parentId: BodyPartType.HIPS, name: "Thigh L", defaultAngle: 10, color: "#1f2937", length: 70 },
     { p: "M-13,0 C-20,20 -18,50 -10,70 L10,70 C18,50 20,20 13,0 Z", x: -10, y: 20, z: 6 },
-    { p: "M-14,0 L14,0 L10,70 L-10,70 Z", x: 0, y: 20, z: 6 },
-    { p: "M-14,0 L14,0 L10,70 L-10,70 Z", x: -10, y: 0, z: 6 }
+    { p: "M-16,0 C-22,20 -20,50 -12,70 L12,70 C22,50 22,20 16,0 Z", x: 0, y: 20, z: 6 }, // Side: Buff
+    { p: "M-16,0 C-20,20 -20,50 -12,70 L12,70 C20,50 20,20 16,0 Z", x: -10, y: 0, z: 6 } // Top: Buff
   ),
   createBone({ id: BodyPartType.LOWER_LEG_L, parentId: BodyPartType.UPPER_LEG_L, name: "Calf L", color: "#fca5a5", length: 60 },
     { p: "M-10,0 C-14,15 -13,45 -7,60 L7,60 C13,45 14,15 10,0 Z", x: 0, y: 70, z: 5 },
-    { p: "M-10,0 L10,0 L8,60 L-8,60 Z", x: 0, y: 70, z: 5 },
-    { p: "M-10,0 L10,0 L8,60 L-8,60 Z", x: 0, y: 70, z: 5 }
+    { p: "M-11,0 C-18,20 -14,45 -8,60 L8,60 C11,45 12,15 11,0 Z", x: 0, y: 70, z: 5 }, // Side: Calf
+    { p: "M-11,0 C-15,20 -15,45 -8,60 L8,60 C15,45 15,20 11,0 Z", x: 0, y: 70, z: 5 }
   ),
   createBone({ id: BodyPartType.FOOT_L, parentId: BodyPartType.LOWER_LEG_L, name: "Foot L", defaultAngle: 90, color: "#ffffff", length: 20 },
     { p: "M-6,0 L6,0 L6,8 C6,18 2,22 -4,22 L-6,22 Z", x: 0, y: 60, z: 4 },
-    { p: "M-5,0 L5,0 L5,8 L15,22 L-5,22 Z", x: 0, y: 60, z: 4 }, // Side: Points Right (+X)
-    { p: "M-6,0 L6,0 L6,25 L-6,25 Z", x: 0, y: 60, z: 4 }
+    { p: "M-6,0 L6,0 L6,8 L16,22 L-6,22 Z", x: 0, y: 60, z: 4 }, 
+    { p: "M-7,0 L7,0 L7,25 L-7,25 Z", x: 0, y: 60, z: 4 }
   ),
    createBone({ id: BodyPartType.UPPER_LEG_R, parentId: BodyPartType.HIPS, name: "Thigh R", defaultAngle: -10, color: "#1f2937", length: 70 },
     { p: "M-13,0 C-20,20 -18,50 -10,70 L10,70 C18,50 20,20 13,0 Z", x: 10, y: 20, z: 6 },
-    { p: "M-14,0 L14,0 L10,70 L-10,70 Z", x: 0, y: 20, z: 6 },
-    { p: "M-14,0 L14,0 L10,70 L-10,70 Z", x: 10, y: 0, z: 6 }
+    { p: "M-16,0 C-22,20 -20,50 -12,70 L12,70 C22,50 22,20 16,0 Z", x: 0, y: 20, z: 6 },
+    { p: "M-16,0 C-20,20 -20,50 -12,70 L12,70 C20,50 20,20 16,0 Z", x: 10, y: 0, z: 6 }
   ),
   createBone({ id: BodyPartType.LOWER_LEG_R, parentId: BodyPartType.UPPER_LEG_R, name: "Calf R", color: "#fca5a5", length: 60 },
     { p: "M-10,0 C-14,15 -13,45 -7,60 L7,60 C13,45 14,15 10,0 Z", x: 0, y: 70, z: 5 },
-    { p: "M-10,0 L10,0 L8,60 L-8,60 Z", x: 0, y: 70, z: 5 },
-    { p: "M-10,0 L10,0 L8,60 L-8,60 Z", x: 0, y: 70, z: 5 }
+    { p: "M-11,0 C-18,20 -14,45 -8,60 L8,60 C11,45 12,15 11,0 Z", x: 0, y: 70, z: 5 },
+    { p: "M-11,0 C-15,20 -15,45 -8,60 L8,60 C15,45 15,20 11,0 Z", x: 0, y: 70, z: 5 }
   ),
   createBone({ id: BodyPartType.FOOT_R, parentId: BodyPartType.LOWER_LEG_R, name: "Foot R", defaultAngle: 90, color: "#ffffff", length: 20 },
     { p: "M-6,0 L6,0 L6,8 C6,18 2,22 -4,22 L-6,22 Z", x: 0, y: 60, z: 4 },
-    { p: "M-5,0 L5,0 L5,8 L15,22 L-5,22 Z", x: 0, y: 60, z: 4 }, // Side: Points Right (+X)
-    { p: "M-6,0 L6,0 L6,25 L-6,25 Z", x: 0, y: 60, z: 4 }
+    { p: "M-6,0 L6,0 L6,8 L16,22 L-6,22 Z", x: 0, y: 60, z: 4 }, 
+    { p: "M-7,0 L7,0 L7,25 L-7,25 Z", x: 0, y: 60, z: 4 }
   ),
 ];
 

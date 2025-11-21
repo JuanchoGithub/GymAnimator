@@ -395,7 +395,10 @@ const App: React.FC = () => {
               affectedBones.forEach(sourceId => {
                   const mirrorId = MIRROR_MAPPING[sourceId];
                   if (mirrorId && newPose[sourceId][view] !== undefined) {
-                      newPose[mirrorId][view] = -newPose[sourceId][view];
+                      // For SIDE view, mirror direction is identical (moving forward/backward together).
+                      // For FRONT/TOP view, mirror direction is opposite (abduction/adduction).
+                      const mirrorSign = view === 'SIDE' ? 1 : -1;
+                      newPose[mirrorId][view] = newPose[sourceId][view] * mirrorSign;
                   }
               });
           }
@@ -435,7 +438,11 @@ const App: React.FC = () => {
         p[id][view] = a;
         if (isMirrorMode) {
             const mirrorId = MIRROR_MAPPING[id];
-            if (mirrorId) p[mirrorId][view] = -a;
+            if (mirrorId) {
+                // Side view rotation is usually synchronous (same direction), Front is mirrored (opposite)
+                const mirrorSign = view === 'SIDE' ? 1 : -1;
+                p[mirrorId][view] = a * mirrorSign;
+            }
         }
         return p;
     };

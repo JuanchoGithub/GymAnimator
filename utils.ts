@@ -418,7 +418,7 @@ export const exportAnimation = (
                 }
             });
             css += `\n}`;
-            css += `\n#bone-${bone.id}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; transform-box: view-box; transform-origin: 0px 0px; }`;
+            css += `\n#bone-${bone.id}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; transform-origin: 0px 0px; }`;
         });
 
         props.forEach(prop => {
@@ -432,7 +432,7 @@ export const exportAnimation = (
                  }
              });
              css += `\n}`;
-             css += `\n#prop-${prop.id}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; transform-box: view-box; transform-origin: 0px 0px; }`;
+             css += `\n#prop-${prop.id}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; transform-origin: 0px 0px; }`;
         });
     });
 

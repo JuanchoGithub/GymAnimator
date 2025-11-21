@@ -1,4 +1,5 @@
 
+
 import { BodyPartType, SkeletonState, GymProp, Keyframe, PropViewTransform, ViewType, LayoutMode, SnapPoint } from "./types";
 import { SKELETON_DEF, IK_CHAINS } from "./constants";
 
@@ -280,39 +281,39 @@ export const exportAnimation = (
     slotViews: ViewType[] = ['FRONT', 'SIDE', 'TOP']
 ) => {
     // 1. Determine Views to Export based on Layout
-    // Structure: { view, x, y, width, height, offsetX, offsetY }
-    let viewsToExport: { view: ViewType, x: number, y: number, w: number, h: number, ox: number, oy: number }[] = [];
+    // Structure: { view, x, y, w, h, ox, oy, scale }
+    let viewsToExport: { view: ViewType, x: number, y: number, w: number, h: number, ox: number, oy: number, scale: number }[] = [];
     let width = 400;
     let height = 500;
 
     switch(layoutMode) {
         case 'SINGLE':
-            viewsToExport = [{ view: activeView, x: 0, y: 0, w: 400, h: 500, ox: 0, oy: 0 }];
+            viewsToExport = [{ view: activeView, x: 0, y: 0, w: 400, h: 500, ox: 0, oy: 0, scale: 1 }];
             break;
         case 'SIDE_BY_SIDE':
             width = 800;
             viewsToExport = [
-                { view: slotViews[0], x: 0, y: 0, w: 400, h: 500, ox: 0, oy: 0 },
-                { view: slotViews[1], x: 400, y: 0, w: 400, h: 500, ox: 0, oy: 0 }
+                { view: slotViews[0], x: 0, y: 0, w: 400, h: 500, ox: 0, oy: 0, scale: 1 },
+                { view: slotViews[1], x: 400, y: 0, w: 400, h: 500, ox: 0, oy: 0, scale: 1 }
             ];
             break;
         case 'TOP_BOTTOM':
             height = 1000;
             viewsToExport = [
-                { view: slotViews[0], x: 0, y: 0, w: 400, h: 500, ox: 0, oy: 0 },
-                { view: slotViews[2], x: 0, y: 500, w: 400, h: 500, ox: 0, oy: 0 }
+                { view: slotViews[0], x: 0, y: 0, w: 400, h: 500, ox: 0, oy: 0, scale: 1 },
+                { view: slotViews[2], x: 0, y: 500, w: 400, h: 500, ox: 0, oy: 0, scale: 1 }
             ];
             break;
         case 'THREE_SPLIT':
             width = 800;
-            height = 1000;
+            height = 500;
             viewsToExport = [
-                // Left Column: Tall (1000px), Content centered vertically (offsetY = 250) to match editor "meet" aspect ratio behavior
-                { view: slotViews[0], x: 0, y: 0, w: 400, h: 1000, ox: 0, oy: 250 },
-                // Right Top
-                { view: slotViews[1], x: 400, y: 0, w: 400, h: 500, ox: 0, oy: 0 },
-                // Right Bottom
-                { view: slotViews[2], x: 400, y: 500, w: 400, h: 500, ox: 0, oy: 0 }
+                // Left Column: Full height (500), Scale 1. Represents the "Large" view (visually 2x the others).
+                { view: slotViews[0], x: 0, y: 0, w: 400, h: 500, ox: 0, oy: 0, scale: 1 },
+                // Right Top: Half height (250), Scale 0.5. Centered horizontally in 400px slot (Content 200px wide).
+                { view: slotViews[1], x: 400, y: 0, w: 400, h: 250, ox: 100, oy: 0, scale: 0.5 },
+                // Right Bottom: Half height (250), Scale 0.5. Centered horizontally.
+                { view: slotViews[2], x: 400, y: 250, w: 400, h: 250, ox: 100, oy: 0, scale: 0.5 }
             ];
             break;
     }
@@ -329,8 +330,8 @@ export const exportAnimation = (
             svgContentInner += `<rect x="${v.x}" y="${v.y}" width="${v.w}" height="${v.h}" fill="#f3f4f6" stroke="#e5e7eb" stroke-width="2"/>\n`;
 
             // Extract inner contents (bones, props)
-            // We wrap them in a group to position them according to the layout + specific centering offset
-            svgContentInner += `<g transform="translate(${v.x + v.ox}, ${v.y + v.oy})">\n`;
+            // We wrap them in a group to position them according to the layout + scale
+            svgContentInner += `<g transform="translate(${v.x + v.ox}, ${v.y + v.oy}) scale(${v.scale})">\n`;
             
             // Use XMLSerializer to ensure valid XML (fixes tag mismatch errors like <circle>)
             Array.from(svg.children).forEach(child => {

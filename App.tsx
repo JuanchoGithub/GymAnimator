@@ -1,21 +1,24 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import Timeline from './components/Timeline';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { Canvas } from './components/Canvas';
-import { BodyPartType, Keyframe, SkeletonState, GymProp, PropTransform, ViewMode } from './types';
+import { BodyPartType, Keyframe, SkeletonState, GymProp, PropViewTransform, ViewType, LayoutMode } from './types';
 import { INITIAL_POSE, SAMPLE_PROPS, SKELETON_DEF, MIRROR_MAPPING, IK_CHAINS } from './constants';
 import { generatePropSvg } from './services/geminiService';
-import { getGlobalTransform, solveTwoBoneIK, toDegrees, normalizeAngle, transformPoint, syncDumbbells, exportAnimation } from './utils';
+import { getGlobalTransform, solveTwoBoneIK, toDegrees, normalizeAngle, transformPoint, syncDumbbells, exportAnimation, Point } from './utils';
 
 const SNAP_THRESHOLD = 20;
 const UNSNAP_THRESHOLD = 50;
+const VIEWS: ViewType[] = ['FRONT', 'SIDE', 'TOP'];
 
 const App: React.FC = () => {
   // --- State ---
+  // Initialize keyframes with deep cloned state
   const [keyframes, setKeyframes] = useState<Keyframe[]>([
-    { id: uuidv4(), duration: 500, pose: { ...INITIAL_POSE }, propTransforms: {} }
+    { id: uuidv4(), duration: 500, pose: JSON.parse(JSON.stringify(INITIAL_POSE)), propTransforms: {} }
   ]);
   const [currentFrameId, setCurrentFrameId] = useState<string>(keyframes[0].id);
   const [selectedBoneId, setSelectedBoneId] = useState<BodyPartType | null>(null);
@@ -23,16 +26,16 @@ const App: React.FC = () => {
   
   const [props, setProps] = useState<GymProp[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentPose, setCurrentPose] = useState<SkeletonState>({ ...INITIAL_POSE });
+  const [currentPose, setCurrentPose] = useState<SkeletonState>(JSON.parse(JSON.stringify(INITIAL_POSE)));
   const [propPrompt, setPropPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isMirrorMode, setIsMirrorMode] = useState(false);
   const [isTimelineExpanded, setIsTimelineExpanded] = useState(true);
   const [exportMode, setExportMode] = useState<'accurate' | 'interpolated'>('accurate');
-  const [viewMode, setViewMode] = useState<ViewMode>('FRONT');
+  const [activeView, setActiveView] = useState<ViewType>('FRONT');
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>('SINGLE');
   const [armsInFront, setArmsInFront] = useState(false);
 
-  // Map of Hand Bone ID -> Attachment Info
   const [attachments, setAttachments] = useState<Record<string, { propId: string, snapPointId: string, rotationOffset: number }>>({});
 
   // Dragging State
@@ -40,10 +43,11 @@ const App: React.FC = () => {
       isDragging: boolean;
       type: 'BONE' | 'PROP';
       id: string;
-      startX: number; // Mouse Screen X
-      startY: number; // Mouse Screen Y
-      originalX?: number; // For Props
-      originalY?: number; // For Props
+      startX: number; 
+      startY: number; 
+      originalX?: number; 
+      originalY?: number; 
+      view: ViewType; // Track which view initiated drag
   } | null>(null);
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -51,19 +55,12 @@ const App: React.FC = () => {
   // --- Helpers ---
   const getCurrentFrame = () => keyframes.find(k => k.id === currentFrameId) || keyframes[0];
 
-  // Update current keyframe with new prop transforms
   const updateKeyframeProps = (newProps: GymProp[]) => {
       setKeyframes(prev => prev.map(kf => {
           if (kf.id === currentFrameId) {
-              const transforms: Record<string, PropTransform> = {};
+              const transforms: Record<string, Record<ViewType, PropViewTransform>> = {};
               newProps.forEach(p => {
-                  transforms[p.id] = {
-                      translateX: p.translateX,
-                      translateY: p.translateY,
-                      rotation: p.rotation,
-                      scaleX: p.scaleX,
-                      scaleY: p.scaleY
-                  };
+                  transforms[p.id] = JSON.parse(JSON.stringify(p.transforms));
               });
               return { ...kf, propTransforms: transforms };
           }
@@ -72,33 +69,22 @@ const App: React.FC = () => {
   };
 
   // --- Effects ---
-  // Sync currentPose and Props with selected frame when not playing
   useEffect(() => {
     if (!isPlaying) {
       const frame = getCurrentFrame();
       if (frame) {
-        setCurrentPose(frame.pose);
-        
-        // Sync Props from Keyframe
+        setCurrentPose(JSON.parse(JSON.stringify(frame.pose)));
         setProps(prevProps => prevProps.map(p => {
             const tr = frame.propTransforms[p.id];
             if (tr) {
-                return { 
-                    ...p, 
-                    translateX: tr.translateX,
-                    translateY: tr.translateY,
-                    rotation: tr.rotation,
-                    scaleX: tr.scaleX,
-                    scaleY: tr.scaleY
-                };
+                return { ...p, transforms: JSON.parse(JSON.stringify(tr)) };
             }
             return p;
         }));
       }
     }
-  }, [currentFrameId, isPlaying]); // Only trigger on frame switch or play/stop
+  }, [currentFrameId, isPlaying]);
 
-  // Animation Loop
   useEffect(() => {
     let animationFrame: number;
     let startTime: number;
@@ -111,66 +97,70 @@ const App: React.FC = () => {
       const currentKeyframe = keyframes[currentKeyframeIndex];
       
       if (elapsed < currentKeyframe.duration) {
-        // Interpolate
         const progress = elapsed / currentKeyframe.duration;
         const nextIndex = (currentKeyframeIndex + 1) % keyframes.length;
         const nextKeyframe = keyframes[nextIndex];
 
-        // 1. Calculate Interpolated Props first (needed for IK)
+        // Interpolate Props
         const nextProps = props.map(p => {
-            const startTr = currentKeyframe.propTransforms[p.id] || { 
-                translateX: p.translateX, translateY: p.translateY, rotation: p.rotation, scaleX: p.scaleX, scaleY: p.scaleY 
-            };
-            const endTr = nextKeyframe.propTransforms[p.id] || startTr;
+            const startTrAll = currentKeyframe.propTransforms[p.id] || p.transforms;
+            const endTrAll = nextKeyframe.propTransforms[p.id] || startTrAll;
+            
+            const interpolatedTransforms: Record<ViewType, PropViewTransform> = {} as any;
+            VIEWS.forEach(v => {
+                const start = startTrAll[v];
+                const end = endTrAll[v];
+                interpolatedTransforms[v] = {
+                    x: start.x + (end.x - start.x) * progress,
+                    y: start.y + (end.y - start.y) * progress,
+                    rotation: start.rotation + (end.rotation - start.rotation) * progress,
+                    scaleX: start.scaleX + (end.scaleX - start.scaleX) * progress,
+                    scaleY: start.scaleY + (end.scaleY - start.scaleY) * progress,
+                }
+            });
 
-            return {
-                ...p,
-                translateX: startTr.translateX + (endTr.translateX - startTr.translateX) * progress,
-                translateY: startTr.translateY + (endTr.translateY - startTr.translateY) * progress,
-                rotation: startTr.rotation + (endTr.rotation - startTr.rotation) * progress,
-                scaleX: startTr.scaleX + (endTr.scaleX - startTr.scaleX) * progress,
-                scaleY: startTr.scaleY + (endTr.scaleY - startTr.scaleY) * progress,
-            };
+            return { ...p, transforms: interpolatedTransforms };
         });
 
-        // 2. Basic Pose Interpolation
+        // Interpolate Pose
         const interpolatedPose: SkeletonState = {} as SkeletonState;
         Object.keys(currentKeyframe.pose).forEach((key) => {
             const k = key as BodyPartType;
-            const startAngle = currentKeyframe.pose[k];
-            const endAngle = nextKeyframe.pose[k];
-            interpolatedPose[k] = startAngle + (endAngle - startAngle) * progress;
+            interpolatedPose[k] = {} as any;
+            VIEWS.forEach(v => {
+                const startAngle = currentKeyframe.pose[k][v];
+                const endAngle = nextKeyframe.pose[k][v];
+                interpolatedPose[k][v] = startAngle + (endAngle - startAngle) * progress;
+            });
         });
 
-        // 3. Apply IK Constraints (Fix: Ensure hands stay attached during animation)
-        Object.entries(attachments).forEach(([boneId, info]) => {
-            const attachedProp = nextProps.find(p => p.id === info.propId);
-            if (attachedProp) {
-                const snapPoint = attachedProp.snapPoints.find(sp => sp.id === info.snapPointId);
-                if (snapPoint) {
-                    // Calculate exact global position of snap point on the *interpolated* prop
-                    const targetGlobal = transformPoint(snapPoint.x, snapPoint.y, attachedProp);
-
-                    // Solve Position IK
-                    const chain = IK_CHAINS[boneId];
-                    if (chain) {
-                        const ikResult = solveTwoBoneIK(chain.upper, chain.lower, targetGlobal, interpolatedPose);
-                        if (ikResult) {
-                            Object.assign(interpolatedPose, ikResult);
+        // IK Logic (Run for each view)
+        VIEWS.forEach(view => {
+            Object.entries(attachments).forEach(([boneId, info]) => {
+                const attachedProp = nextProps.find(p => p.id === info.propId);
+                if (attachedProp) {
+                    const snapPoint = attachedProp.snapPoints.find(sp => sp.id === info.snapPointId);
+                    if (snapPoint) {
+                        const targetGlobal = transformPoint(snapPoint.x, snapPoint.y, attachedProp.transforms[view]);
+                        const chain = IK_CHAINS[boneId];
+                        if (chain) {
+                            const ikResult = solveTwoBoneIK(chain.upper, chain.lower, targetGlobal, interpolatedPose, view);
+                            if (ikResult) {
+                                interpolatedPose[chain.upper as BodyPartType][view] = ikResult[chain.upper];
+                                interpolatedPose[chain.lower as BodyPartType][view] = ikResult[chain.lower];
+                            }
+                        }
+                        const handBoneDef = SKELETON_DEF.find(b => b.id === boneId);
+                        if(handBoneDef && handBoneDef.parentId) {
+                              const parentGlobal = getGlobalTransform(handBoneDef.parentId, interpolatedPose, view);
+                              const offset = info.rotationOffset || 0;
+                              const targetHandGlobal = attachedProp.transforms[view].rotation + offset; 
+                              const targetHandLocal = normalizeAngle(targetHandGlobal - parentGlobal.angle);
+                              interpolatedPose[boneId as BodyPartType][view] = targetHandLocal;
                         }
                     }
-
-                    // Solve Rotation Constraint
-                    const handBoneDef = SKELETON_DEF.find(b => b.id === boneId);
-                    if(handBoneDef && handBoneDef.parentId) {
-                          const parentGlobal = getGlobalTransform(handBoneDef.parentId, interpolatedPose);
-                          const offset = info.rotationOffset || 0;
-                          const targetHandGlobal = attachedProp.rotation + offset; 
-                          const targetHandLocal = normalizeAngle(targetHandGlobal - parentGlobal.angle);
-                          interpolatedPose[boneId as BodyPartType] = targetHandLocal;
-                    }
                 }
-            }
+            });
         });
 
         setCurrentPose(interpolatedPose);
@@ -178,7 +168,6 @@ const App: React.FC = () => {
 
         animationFrame = requestAnimationFrame(animate);
       } else {
-        // Next frame
         startTime = timestamp;
         currentKeyframeIndex = (currentKeyframeIndex + 1) % keyframes.length;
         animationFrame = requestAnimationFrame(animate);
@@ -190,38 +179,33 @@ const App: React.FC = () => {
     }
 
     return () => cancelAnimationFrame(animationFrame);
-  }, [isPlaying, keyframes, attachments]); // Added attachments to dependency
+  }, [isPlaying, keyframes, attachments]);
 
 
   // --- Handlers ---
 
-  const getSvgPoint = (screenX: number, screenY: number) => {
-      if (!svgRef.current) return { x: 0, y: 0 };
-      const pt = svgRef.current.createSVGPoint();
-      pt.x = screenX;
-      pt.y = screenY;
-      return pt.matrixTransform(svgRef.current.getScreenCTM()?.inverse());
-  };
-
-  const handleBoneMouseDown = (id: BodyPartType, e: React.MouseEvent) => {
+  const handleBoneMouseDown = (id: BodyPartType, e: React.MouseEvent, view: ViewType) => {
     if (isPlaying) return;
     setSelectedBoneId(id);
     setSelectedPropId(null);
+    setActiveView(view);
     
     setDragState({
         isDragging: true,
         type: 'BONE',
         id,
         startX: e.clientX,
-        startY: e.clientY
+        startY: e.clientY,
+        view
     });
   };
 
-  const handlePropMouseDown = (e: React.MouseEvent, prop: GymProp) => {
+  const handlePropMouseDown = (e: React.MouseEvent, prop: GymProp, view: ViewType) => {
       if (isPlaying) return;
       e.stopPropagation();
       setSelectedPropId(prop.id);
       setSelectedBoneId(null);
+      setActiveView(view);
 
       setDragState({
           isDragging: true,
@@ -229,29 +213,50 @@ const App: React.FC = () => {
           id: prop.id,
           startX: e.clientX,
           startY: e.clientY,
-          originalX: prop.translateX,
-          originalY: prop.translateY
+          originalX: prop.transforms[view].x,
+          originalY: prop.transforms[view].y,
+          view
       });
   };
 
-  const handleSvgMouseMove = (e: React.MouseEvent) => {
+  const handleSvgMouseMove = (e: React.MouseEvent, view: ViewType) => {
       if (!dragState || !dragState.isDragging) return;
       
-      const svgPoint = getSvgPoint(e.clientX, e.clientY);
+      // If dragging started in a different view, ignore or handle carefully. 
+      // Here we strictly control based on the view where drag started.
+      if (dragState.view !== view) return;
 
-      // --- PROP DRAGGING ---
-      if (dragState.type === 'PROP' && selectedPropId && dragState.originalX !== undefined) {
-          const startPt = getSvgPoint(dragState.startX, dragState.startY);
-          const dx = svgPoint.x - startPt.x;
-          const dy = svgPoint.y - startPt.y;
+      const svg = e.currentTarget as SVGSVGElement;
+      const pt = svg.createSVGPoint();
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+      const svgPoint = pt.matrixTransform(svg.getScreenCTM()?.inverse());
+      
+      const startPt = svg.createSVGPoint();
+      startPt.x = dragState.startX;
+      startPt.y = dragState.startY;
+      const startSvgPoint = startPt.matrixTransform(svg.getScreenCTM()?.inverse());
 
-          // Update the Moved Prop
+      const dx = svgPoint.x - startSvgPoint.x;
+      const dy = svgPoint.y - startSvgPoint.y;
+
+      // --- PROP DRAGGING (Independent View) ---
+      if (dragState.type === 'PROP' && selectedPropId) {
           const updatedProps = props.map(p => {
               if (p.id === selectedPropId) {
+                  const newX = dragState.originalX! + dx;
+                  const newY = dragState.originalY! + dy;
+                  
                   return {
                       ...p,
-                      translateX: dragState.originalX! + dx,
-                      translateY: dragState.originalY! + dy
+                      transforms: {
+                          ...p.transforms,
+                          [view]: {
+                              ...p.transforms[view],
+                              x: newX,
+                              y: newY
+                          }
+                      }
                   };
               }
               return p;
@@ -260,47 +265,40 @@ const App: React.FC = () => {
           setProps(updatedProps);
           updateKeyframeProps(updatedProps);
           
-          // --- IK Follow for Attached Hands ---
+          // IK Follow
           const movingProp = updatedProps.find(p => p.id === selectedPropId);
           if (movingProp) {
               const attachedHands = Object.entries(attachments)
                   .filter(([_, info]) => info.propId === movingProp.id);
               
               if (attachedHands.length > 0) {
-                  let newPose = { ...currentPose };
-                  
+                  let newPose = JSON.parse(JSON.stringify(currentPose));
                   attachedHands.forEach(([handId, info]) => {
                       const snapGlobal = transformPoint(
                           movingProp.snapPoints.find(sp => sp.id === info.snapPointId)?.x || 0,
                           movingProp.snapPoints.find(sp => sp.id === info.snapPointId)?.y || 0,
-                          movingProp
+                          movingProp.transforms[view]
                       );
-
-                      // 1. Position IK
                       const chain = IK_CHAINS[handId];
                       if (chain) {
-                          const ikResult = solveTwoBoneIK(chain.upper, chain.lower, snapGlobal, newPose);
+                          const ikResult = solveTwoBoneIK(chain.upper, chain.lower, snapGlobal, newPose, view);
                           if (ikResult) {
-                              Object.assign(newPose, ikResult);
+                              newPose[chain.upper][view] = ikResult[chain.upper];
+                              newPose[chain.lower][view] = ikResult[chain.lower];
                           }
                       }
-
-                      // 2. Rotation Sync (Hand Grips Prop)
-                      const handBoneDef = SKELETON_DEF.find(b => b.id === handId);
-                      if(handBoneDef && handBoneDef.parentId) {
-                          const parentGlobal = getGlobalTransform(handBoneDef.parentId, newPose);
-                          const offset = info.rotationOffset || 0;
-                          const targetHandGlobal = movingProp.rotation + offset; 
-                          const targetHandLocal = normalizeAngle(targetHandGlobal - parentGlobal.angle);
-                          newPose[handId as BodyPartType] = targetHandLocal;
-                      }
+                       const handBoneDef = SKELETON_DEF.find(b => b.id === handId);
+                       if(handBoneDef && handBoneDef.parentId) {
+                           const parentGlobal = getGlobalTransform(handBoneDef.parentId, newPose, view);
+                           const offset = info.rotationOffset || 0;
+                           const targetHandGlobal = movingProp.transforms[view].rotation + offset; 
+                           const targetHandLocal = normalizeAngle(targetHandGlobal - parentGlobal.angle);
+                           newPose[handId as BodyPartType][view] = targetHandLocal;
+                       }
                   });
-
                   setCurrentPose(newPose);
                   setKeyframes(prev => prev.map(kf => {
-                      if (kf.id === currentFrameId) {
-                          return { ...kf, pose: newPose };
-                      }
+                      if (kf.id === currentFrameId) return { ...kf, pose: newPose };
                       return kf;
                   }));
               }
@@ -308,27 +306,26 @@ const App: React.FC = () => {
           return;
       }
 
-      // --- BONE DRAGGING (IK / ROTATION) ---
+      // --- BONE DRAGGING (Independent View) ---
       if (dragState.type === 'BONE' && selectedBoneId) {
           const boneId = selectedBoneId;
-          let newPose = { ...currentPose };
+          let newPose = JSON.parse(JSON.stringify(currentPose));
           let affectedBones: BodyPartType[] = [];
           let newAttachments = { ...attachments };
           
-          // 1. Check if it's an IK Chain End Effector (Hand/Foot)
           if (IK_CHAINS[boneId]) {
               const chain = IK_CHAINS[boneId];
-              let targetPos = svgPoint;
+              let targetPos: Point = svgPoint;
 
-              // --- Snap Logic (Only for hands) ---
+              // Snap Logic (Only for FRONT view usually, but we can support all)
               if (boneId.includes('HAND')) {
                   let nearestDist = Infinity;
-                  let nearestSnapPos = svgPoint;
+                  let nearestSnapPos: Point = svgPoint;
                   let nearestInfo: { propId: string, snapId: string } | null = null;
 
                   props.forEach(prop => {
                       prop.snapPoints.forEach(sp => {
-                          const globalSp = transformPoint(sp.x, sp.y, prop);
+                          const globalSp = transformPoint(sp.x, sp.y, prop.transforms[view]);
                           const dist = Math.sqrt(Math.pow(globalSp.x - svgPoint.x, 2) + Math.pow(globalSp.y - svgPoint.y, 2));
                           if (dist < nearestDist) {
                               nearestDist = dist;
@@ -346,26 +343,23 @@ const App: React.FC = () => {
                       const isDumbbell = attachedProp?.name.toLowerCase().includes('dumbbell');
                       
                       if (attachedProp && attachedSp) {
-                           const anchorPos = transformPoint(attachedSp.x, attachedSp.y, attachedProp);
+                           const anchorPos = transformPoint(attachedSp.x, attachedSp.y, attachedProp.transforms[view]);
                            const distFromAnchor = Math.sqrt(Math.pow(anchorPos.x - svgPoint.x, 2) + Math.pow(anchorPos.y - svgPoint.y, 2));
                            
                            if (distFromAnchor > UNSNAP_THRESHOLD) {
                                delete newAttachments[boneId];
-                               targetPos = svgPoint; // Free movement
+                               targetPos = svgPoint; 
                            } else {
-                               if (isDumbbell) {
-                                   targetPos = svgPoint; // Prop follows hand
-                               } else {
-                                   targetPos = anchorPos; // Hand locked to prop
-                               }
+                               if (isDumbbell) targetPos = svgPoint; 
+                               else targetPos = anchorPos; 
                            }
                       }
                   } else {
                       if (nearestDist < SNAP_THRESHOLD && nearestInfo) {
                           targetPos = nearestSnapPos;
-                          const handGlobal = getGlobalTransform(boneId, currentPose);
+                          const handGlobal = getGlobalTransform(boneId, currentPose, view);
                           const prop = props.find(p => p.id === nearestInfo!.propId)!;
-                          const offset = normalizeAngle(handGlobal.angle - prop.rotation);
+                          const offset = normalizeAngle(handGlobal.angle - prop.transforms[view].rotation);
 
                           newAttachments[boneId] = { 
                               propId: nearestInfo.propId, 
@@ -376,38 +370,36 @@ const App: React.FC = () => {
                   }
               }
 
-              const ikResult = solveTwoBoneIK(chain.upper, chain.lower, targetPos, currentPose);
+              const ikResult = solveTwoBoneIK(chain.upper, chain.lower, targetPos, currentPose, view);
               if (ikResult) {
-                  newPose = { ...newPose, ...ikResult };
+                  newPose[chain.upper][view] = ikResult[chain.upper];
+                  newPose[chain.lower][view] = ikResult[chain.lower];
                   affectedBones.push(chain.upper, chain.lower);
               }
           } 
-          // 2. Standard Rotation
           else {
              const boneDef = SKELETON_DEF.find(b => b.id === boneId);
              if (boneDef && boneDef.parentId) {
-                 const parentGlobal = getGlobalTransform(boneDef.parentId, currentPose);
+                 const parentGlobal = getGlobalTransform(boneDef.parentId, currentPose, view);
                  const dx = svgPoint.x - parentGlobal.x;
                  const dy = svgPoint.y - parentGlobal.y;
                  const targetGlobalAngle = toDegrees(Math.atan2(dy, dx));
                  const targetGlobalSvg = targetGlobalAngle - 90;
                  const localAngle = normalizeAngle(targetGlobalSvg - parentGlobal.angle);
-                 newPose[boneId] = localAngle;
+                 newPose[boneId][view] = localAngle;
                  affectedBones.push(boneId);
              }
           }
 
-          // 3. Apply Mirroring
           if (isMirrorMode) {
               affectedBones.forEach(sourceId => {
                   const mirrorId = MIRROR_MAPPING[sourceId];
-                  if (mirrorId && newPose[sourceId] !== undefined) {
-                      newPose[mirrorId] = -newPose[sourceId];
+                  if (mirrorId && newPose[sourceId][view] !== undefined) {
+                      newPose[mirrorId][view] = -newPose[sourceId][view];
                   }
               });
           }
 
-          // 4. Sync Dumbbells
           const syncedProps = syncDumbbells(props, newPose, newAttachments);
           if (syncedProps !== props) {
               setProps(syncedProps);
@@ -421,16 +413,9 @@ const App: React.FC = () => {
                   const transforms = kf.propTransforms || {};
                   if (syncedProps !== props) {
                       syncedProps.forEach(p => {
-                         transforms[p.id] = {
-                              translateX: p.translateX,
-                              translateY: p.translateY,
-                              rotation: p.rotation,
-                              scaleX: p.scaleX,
-                              scaleY: p.scaleY
-                         };
+                         transforms[p.id] = JSON.parse(JSON.stringify(p.transforms));
                       });
                   }
-
                   return { ...kf, pose: newPose, propTransforms: { ...transforms } };
               }
               return kf;
@@ -445,18 +430,17 @@ const App: React.FC = () => {
   const handleRotationChange = (angle: number) => {
     if (!selectedBoneId || isPlaying) return;
 
-    const updatePose = (pose: SkeletonState, id: BodyPartType, a: number) => {
-        const p = { ...pose, [id]: a };
+    const updatePose = (pose: SkeletonState, id: BodyPartType, a: number, view: ViewType) => {
+        const p = JSON.parse(JSON.stringify(pose));
+        p[id][view] = a;
         if (isMirrorMode) {
             const mirrorId = MIRROR_MAPPING[id];
-            if (mirrorId) {
-                p[mirrorId] = -a;
-            }
+            if (mirrorId) p[mirrorId][view] = -a;
         }
         return p;
     };
 
-    const newPose = updatePose(currentPose, selectedBoneId, angle);
+    const newPose = updatePose(currentPose, selectedBoneId, angle, activeView);
     setCurrentPose(newPose);
 
     const syncedProps = syncDumbbells(props, newPose, attachments);
@@ -465,12 +449,13 @@ const App: React.FC = () => {
         updateKeyframeProps(syncedProps);
     }
 
+    // Update offsets if attached (Specific to current view context? No, usually syncing keeps relative angle)
     if (attachments[selectedBoneId]) {
          const att = attachments[selectedBoneId];
-         const handGlobal = getGlobalTransform(selectedBoneId, newPose);
+         const handGlobal = getGlobalTransform(selectedBoneId, newPose, activeView);
          const prop = syncedProps.find(p => p.id === att.propId);
          if (prop) {
-             const newOffset = normalizeAngle(handGlobal.angle - prop.rotation);
+             const newOffset = normalizeAngle(handGlobal.angle - prop.transforms[activeView].rotation);
              setAttachments(prev => ({
                  ...prev,
                  [selectedBoneId]: { ...att, rotationOffset: newOffset }
@@ -483,13 +468,7 @@ const App: React.FC = () => {
          const transforms = kf.propTransforms || {};
           if (syncedProps !== props) {
               syncedProps.forEach(p => {
-                 transforms[p.id] = {
-                      translateX: p.translateX,
-                      translateY: p.translateY,
-                      rotation: p.rotation,
-                      scaleX: p.scaleX,
-                      scaleY: p.scaleY
-                 };
+                 transforms[p.id] = JSON.parse(JSON.stringify(p.transforms));
               });
           }
         return { ...kf, pose: newPose, propTransforms: { ...transforms } };
@@ -509,8 +488,8 @@ const App: React.FC = () => {
     const newFrame: Keyframe = {
       id: uuidv4(),
       duration: 500,
-      pose: { ...currentFrame.pose }, // Copy previous pose
-      propTransforms: { ...currentFrame.propTransforms } // Copy previous props
+      pose: JSON.parse(JSON.stringify(currentFrame.pose)), 
+      propTransforms: JSON.parse(JSON.stringify(currentFrame.propTransforms))
     };
     setKeyframes([...keyframes, newFrame]);
     setCurrentFrameId(newFrame.id);
@@ -529,21 +508,13 @@ const App: React.FC = () => {
       setKeyframes(keyframes.map(k => k.id === id ? { ...k, duration: dur } : k));
   };
 
-  // Helper to register a new prop to state and keyframes
   const registerNewProp = (newProp: GymProp) => {
       setProps(prev => [...prev, newProp]);
-      // Backfill all keyframes (or at least current) with this prop to ensure it exists in animation
       setKeyframes(prev => prev.map(kf => ({
           ...kf,
           propTransforms: {
               ...kf.propTransforms,
-              [newProp.id]: {
-                  translateX: newProp.translateX,
-                  translateY: newProp.translateY,
-                  rotation: newProp.rotation,
-                  scaleX: newProp.scaleX,
-                  scaleY: newProp.scaleY
-              }
+              [newProp.id]: JSON.parse(JSON.stringify(newProp.transforms))
           }
       })));
   };
@@ -556,14 +527,17 @@ const App: React.FC = () => {
       const newProp: GymProp = {
         id: uuidv4(),
         name: result.name,
-        path: result.path,
-        viewBox: result.viewBox,
-        scaleX: 1,
-        scaleY: 1,
-        translateX: 200,
-        translateY: 350,
+        views: {
+            FRONT: { path: result.path, viewBox: result.viewBox },
+            SIDE: { path: result.path, viewBox: result.viewBox }, 
+            TOP: { path: result.path, viewBox: result.viewBox }
+        },
+        transforms: {
+            FRONT: { x: 200, y: 350, rotation: 0, scaleX: 1, scaleY: 1 },
+            SIDE: { x: 200, y: 350, rotation: 0, scaleX: 1, scaleY: 1 },
+            TOP: { x: 200, y: 200, rotation: 0, scaleX: 1, scaleY: 1 },
+        },
         attachedTo: null,
-        rotation: 0,
         snapPoints: [{ id: 'center', name: 'Center', x: 0, y: 0 }],
         color: '#cccccc'
       };
@@ -580,14 +554,13 @@ const App: React.FC = () => {
        const newProp: GymProp = {
         id: uuidv4(),
         name: preset.name,
-        path: preset.path,
-        viewBox: preset.viewBox,
-        scaleX: 1,
-        scaleY: 1,
-        translateX: 200,
-        translateY: 350,
+        views: preset.views,
+        transforms: {
+            FRONT: { x: 200, y: 350, rotation: 0, scaleX: 1, scaleY: 1 },
+            SIDE: { x: 200, y: 350, rotation: 0, scaleX: 1, scaleY: 1 },
+            TOP: { x: 200, y: 200, rotation: 0, scaleX: 1, scaleY: 1 },
+        },
         attachedTo: null,
-        rotation: preset.rotation || 0,
         snapPoints: preset.snapPoints || [],
         color: preset.color,
         layer: preset.layer,
@@ -625,7 +598,7 @@ const App: React.FC = () => {
       setSelectedBoneId(null);
   };
 
-  const handleExport = () => exportAnimation(keyframes, props, attachments, exportMode);
+  const handleExport = () => exportAnimation(keyframes, props, attachments, exportMode, layoutMode, activeView);
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-900 text-gray-100 overflow-hidden">
@@ -635,8 +608,10 @@ const App: React.FC = () => {
         onExport={handleExport}
         exportMode={exportMode}
         setExportMode={setExportMode}
-        viewMode={viewMode}
-        setViewMode={setViewMode}
+        activeView={activeView}
+        setActiveView={setActiveView}
+        layoutMode={layoutMode}
+        setLayoutMode={setLayoutMode}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -659,6 +634,7 @@ const App: React.FC = () => {
             onSelectProp={handleSelectProp}
             armsInFront={armsInFront}
             setArmsInFront={setArmsInFront}
+            activeView={activeView}
         />
 
         <Canvas 
@@ -670,9 +646,9 @@ const App: React.FC = () => {
             attachments={attachments}
             dragState={dragState}
             isPlaying={isPlaying}
-            isMirrorMode={isMirrorMode}
-            viewMode={viewMode}
             armsInFront={armsInFront}
+            activeView={activeView}
+            layoutMode={layoutMode}
             onBoneMouseDown={handleBoneMouseDown}
             onPropMouseDown={handlePropMouseDown}
             onSvgMouseMove={handleSvgMouseMove}
@@ -681,6 +657,7 @@ const App: React.FC = () => {
                 setSelectedBoneId(null);
                 setSelectedPropId(null);
             }}
+            onSetActiveView={setActiveView}
         />
       </div>
 

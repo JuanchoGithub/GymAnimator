@@ -1,6 +1,8 @@
+
 import React from 'react';
 import { BodyPartType, GymProp, SkeletonState } from '../types';
 import { SKELETON_DEF, SAMPLE_PROPS, MIRROR_MAPPING } from '../constants';
+import { ViewType } from '../types';
 
 interface SidebarProps {
   selectedBoneId: BodyPartType | null;
@@ -21,6 +23,7 @@ interface SidebarProps {
   onSelectProp: (id: string) => void;
   armsInFront: boolean;
   setArmsInFront: (val: boolean) => void;
+  activeView?: ViewType; // Now passed from parent to know which context to edit
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -41,7 +44,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isMirrorMode,
   onSelectProp,
   armsInFront,
-  setArmsInFront
+  setArmsInFront,
+  activeView = 'FRONT'
 }) => {
   const activeBoneDef = SKELETON_DEF.find(b => b.id === selectedBoneId);
   const activeProp = props.find(p => p.id === selectedPropId);
@@ -77,26 +81,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Bone/Prop Selection Controls */}
         <div className="p-3 bg-gray-900 rounded-lg border border-gray-700">
-            <h2 className="text-xs font-bold text-gray-400 uppercase mb-3">Selection Control</h2>
+            <div className="flex justify-between items-center mb-3">
+                 <h2 className="text-xs font-bold text-gray-400 uppercase">Selection Control</h2>
+                 <span className="text-[10px] text-blue-400 bg-blue-900/30 px-1.5 rounded">{activeView}</span>
+            </div>
             
             {activeBoneDef ? (
                 <div className="space-y-3">
                      <div className="flex justify-between text-sm items-center">
                         <span className="text-blue-400 font-semibold">{activeBoneDef.name}</span>
                         <span className="font-mono text-yellow-500 bg-gray-800 px-2 rounded">
-                            {currentPose[activeBoneDef.id]?.toFixed(0)}°
+                            {currentPose[activeBoneDef.id]?.[activeView]?.toFixed(0)}°
                         </span>
                     </div>
                     <input 
                         type="range"
                         min="-180"
                         max="180"
-                        value={currentPose[activeBoneDef.id] || 0}
+                        value={currentPose[activeBoneDef.id]?.[activeView] || 0}
                         onChange={(e) => onRotationChange(Number(e.target.value))}
                         className="w-full accent-yellow-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
                     />
                     <div className="flex justify-between text-[10px] text-gray-500">
-                        <span>Rotation</span>
+                        <span>Rotation ({activeView})</span>
                         {isMirrorMode && MIRROR_MAPPING[activeBoneDef.id] && <span className="text-yellow-500">Mirrored</span>}
                     </div>
 
@@ -147,43 +154,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span className="text-green-400 font-semibold truncate pr-2">{activeProp.name}</span>
                     </div>
 
-                    {/* Cable Flip Toggle */}
-                    {activeProp.name.toLowerCase().includes('cable') && (
-                        <div className="flex items-center justify-between">
-                             <span className="text-[10px] text-gray-400">Orientation</span>
-                             <label className="flex items-center space-x-1 cursor-pointer text-xs">
-                                 <input 
-                                    type="checkbox" 
-                                    checked={activeProp.scaleY < 0}
-                                    onChange={(e) => {
-                                        const sign = e.target.checked ? -1 : 1;
-                                        setProps(props.map(p => p.id === activeProp.id ? {...p, scaleY: Math.abs(p.scaleY) * sign} : p));
-                                    }}
-                                    className="rounded bg-gray-700 border-gray-600 text-yellow-500 focus:ring-0"
-                                 />
-                                 <span className="text-gray-300">Flip Vertical</span>
-                             </label>
-                        </div>
-                    )}
-                    
                     {/* Position X */}
                     <div>
                         <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                            <span>Position X</span>
+                            <span>Position X ({activeView})</span>
                         </div>
                         <div className="flex items-center space-x-2">
                             <input 
                                 type="range"
                                 min="-100"
                                 max="500"
-                                value={activeProp.translateX}
-                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, translateX: Number(e.target.value)} : p))}
+                                value={activeProp.transforms[activeView].x}
+                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], x: Number(e.target.value)}}} : p))}
                                 className="flex-1 accent-yellow-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
                             />
                             <input 
                                 type="number" 
-                                value={Math.round(activeProp.translateX)}
-                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, translateX: Number(e.target.value)} : p))}
+                                value={Math.round(activeProp.transforms[activeView].x)}
+                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], x: Number(e.target.value)}}} : p))}
                                 className="w-12 bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
                             />
                         </div>
@@ -192,21 +180,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {/* Position Y */}
                     <div>
                         <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                            <span>Position Y</span>
+                            <span>Position Y ({activeView})</span>
                         </div>
                         <div className="flex items-center space-x-2">
                             <input 
                                 type="range"
                                 min="-100"
                                 max="600"
-                                value={activeProp.translateY}
-                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, translateY: Number(e.target.value)} : p))}
+                                value={activeProp.transforms[activeView].y}
+                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], y: Number(e.target.value)}}} : p))}
                                 className="flex-1 accent-yellow-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
                             />
                             <input 
                                 type="number" 
-                                value={Math.round(activeProp.translateY)}
-                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, translateY: Number(e.target.value)} : p))}
+                                value={Math.round(activeProp.transforms[activeView].y)}
+                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], y: Number(e.target.value)}}} : p))}
                                 className="w-12 bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
                             />
                         </div>
@@ -215,54 +203,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {/* Rotation */}
                     <div>
                         <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                            <span>Rotation</span>
+                            <span>Rotation ({activeView})</span>
                         </div>
                         <div className="flex items-center space-x-2">
                             <input 
                                 type="range"
                                 min="-180"
                                 max="180"
-                                value={activeProp.rotation}
-                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, rotation: Number(e.target.value)} : p))}
+                                value={activeProp.transforms[activeView].rotation}
+                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], rotation: Number(e.target.value)}}} : p))}
                                 className="flex-1 accent-yellow-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
                             />
                             <input 
                                 type="number" 
-                                value={Math.round(activeProp.rotation)}
-                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, rotation: Number(e.target.value)} : p))}
-                                className="w-12 bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Scale */}
-                    <div>
-                        <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                            <span>Scale</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                            <input 
-                                type="range"
-                                min="0.1"
-                                max="3.0"
-                                step="0.1"
-                                value={Math.abs(activeProp.scaleX)}
-                                onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    const signY = activeProp.scaleY < 0 ? -1 : 1;
-                                    setProps(props.map(p => p.id === activeProp.id ? {...p, scaleX: val, scaleY: val * signY} : p));
-                                }}
-                                className="flex-1 accent-yellow-500 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                            />
-                            <input 
-                                type="number" 
-                                step="0.1"
-                                value={Math.abs(activeProp.scaleX)}
-                                onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    const signY = activeProp.scaleY < 0 ? -1 : 1;
-                                    setProps(props.map(p => p.id === activeProp.id ? {...p, scaleX: val, scaleY: val * signY} : p));
-                                }}
+                                value={Math.round(activeProp.transforms[activeView].rotation)}
+                                onChange={(e) => setProps(props.map(p => p.id === activeProp.id ? {...p, transforms: {...p.transforms, [activeView]: {...p.transforms[activeView], rotation: Number(e.target.value)}}} : p))}
                                 className="w-12 bg-gray-800 text-[10px] text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center focus:border-yellow-500 outline-none"
                             />
                         </div>

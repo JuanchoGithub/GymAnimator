@@ -1,3 +1,4 @@
+
 export enum BodyPartType {
   ROOT = 'ROOT',
   HIPS = 'HIPS',
@@ -18,27 +19,36 @@ export enum BodyPartType {
   FOOT_R = 'FOOT_R',
 }
 
+export type ViewType = 'FRONT' | 'SIDE' | 'TOP';
+export type LayoutMode = 'SINGLE' | 'SIDE_BY_SIDE' | 'TOP_BOTTOM' | 'THREE_SPLIT';
+
+export interface ViewDefinition {
+    path: string;
+    originX: number;
+    originY: number;
+    zIndex: number;
+}
+
 export interface Bone {
   id: BodyPartType;
   parentId: BodyPartType | null;
   name: string;
   length: number;
   width: number;
-  jointRadius?: number; // Radius for the joint circle at the pivot
+  jointRadius?: number; 
   color: string;
-  defaultAngle: number; // Degrees relative to parent
-  originX: number; // Pivot X relative to parent
-  originY: number; // Pivot Y relative to parent
-  zIndex: number;
-  shapePath?: string; // Custom SVG path for the body part
+  defaultAngle: number; 
+  originX: number;
+  originY: number;
+  views: Record<ViewType, ViewDefinition>; // Defines shape/origin for each view
 }
 
-// A map of Bone ID to its current rotation angle
-export type SkeletonState = Record<BodyPartType, number>;
+// A map of Bone ID to its rotation angle per view
+export type SkeletonState = Record<BodyPartType, Record<ViewType, number>>;
 
-export interface PropTransform {
-  translateX: number;
-  translateY: number;
+export interface PropViewTransform {
+  x: number;
+  y: number;
   rotation: number;
   scaleX: number;
   scaleY: number;
@@ -46,9 +56,10 @@ export interface PropTransform {
 
 export interface Keyframe {
   id: string;
-  duration: number; // Time to reach this frame (ms)
+  duration: number; 
   pose: SkeletonState;
-  propTransforms: Record<string, PropTransform>;
+  // Prop ID -> View -> Transform
+  propTransforms: Record<string, Record<ViewType, PropViewTransform>>;
 }
 
 export interface SnapPoint {
@@ -58,22 +69,23 @@ export interface SnapPoint {
   y: number;
 }
 
+export interface PropViewDefinition {
+    path: string;
+    viewBox: string;
+}
+
 export interface GymProp {
   id: string;
   name: string;
-  path: string;
-  viewBox: string;
-  scaleX: number;
-  scaleY: number;
-  translateX: number;
-  translateY: number;
-  rotation: number; // Degrees
-  attachedTo: BodyPartType | null; // Deprecated/Legacy, using App state for multi-hand
+  views: Record<ViewType, PropViewDefinition>;
+  
+  // Independent transforms per view
+  transforms: Record<ViewType, PropViewTransform>;
+  
+  attachedTo: BodyPartType | null; 
   snapPoints: SnapPoint[];
   color: string;
   stroke?: string;
   strokeWidth?: number;
   layer?: 'front' | 'back';
 }
-
-export type ViewMode = 'FRONT' | 'BACK';

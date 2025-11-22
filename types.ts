@@ -21,6 +21,7 @@ export enum BodyPartType {
 
 export type ViewType = 'FRONT' | 'SIDE' | 'TOP';
 export type LayoutMode = 'SINGLE' | 'SIDE_BY_SIDE' | 'TOP_BOTTOM' | 'THREE_SPLIT';
+export type PlaybackMode = 'LOOP' | 'PING_PONG';
 
 export interface ViewDefinition {
     path: string;

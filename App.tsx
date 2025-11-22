@@ -5,7 +5,7 @@ import Timeline from './components/Timeline';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { Canvas } from './components/Canvas';
-import { BodyPartType, Keyframe, SkeletonState, GymProp, PropViewTransform, ViewType, LayoutMode, Appearance } from './types';
+import { BodyPartType, Keyframe, SkeletonState, GymProp, PropViewTransform, ViewType, LayoutMode, Appearance, PlaybackMode } from './types';
 import { INITIAL_POSE, SAMPLE_PROPS, SKELETON_DEF, MIRROR_MAPPING, IK_CHAINS } from './constants';
 import { getGlobalTransform, solveTwoBoneIK, toDegrees, normalizeAngle, transformPoint, syncDumbbells, exportAnimation, Point, getSnapPointDef, synchronizePropViews } from './utils';
 
@@ -25,6 +25,8 @@ const App: React.FC = () => {
   
   const [props, setProps] = useState<GymProp[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('LOOP');
+
   const [currentPose, setCurrentPose] = useState<SkeletonState>(JSON.parse(JSON.stringify(INITIAL_POSE)));
   // No longer using propPrompt or isGenerating
   const [isMirrorMode, setIsMirrorMode] = useState(false);
@@ -98,6 +100,7 @@ const App: React.FC = () => {
     let animationFrame: number;
     let startTime: number;
     let currentKeyframeIndex = 0;
+    let direction = 1; // 1 for forward, -1 for backward
 
     const animate = (timestamp: number) => {
       if (!startTime) startTime = timestamp;
@@ -105,10 +108,31 @@ const App: React.FC = () => {
       
       const currentKeyframe = keyframes[currentKeyframeIndex];
       
+      // Determine next index based on mode
+      let nextIndex = 0;
+      if (playbackMode === 'LOOP') {
+          nextIndex = (currentKeyframeIndex + 1) % keyframes.length;
+      } else {
+          // PING_PONG
+          if (keyframes.length <= 1) {
+              nextIndex = 0;
+          } else {
+              // Determine direction based on where we are
+              if (currentKeyframeIndex === 0) direction = 1;
+              if (currentKeyframeIndex === keyframes.length - 1) direction = -1;
+              
+              nextIndex = currentKeyframeIndex + direction;
+
+              // Boundary safety checks
+              if (nextIndex < 0) nextIndex = 1;
+              if (nextIndex >= keyframes.length) nextIndex = keyframes.length - 2;
+          }
+      }
+
+      const nextKeyframe = keyframes[nextIndex];
+
       if (elapsed < currentKeyframe.duration) {
         const progress = elapsed / currentKeyframe.duration;
-        const nextIndex = (currentKeyframeIndex + 1) % keyframes.length;
-        const nextKeyframe = keyframes[nextIndex];
 
         // Interpolate Props
         const nextProps = props.map(p => {
@@ -179,7 +203,7 @@ const App: React.FC = () => {
         animationFrame = requestAnimationFrame(animate);
       } else {
         startTime = timestamp;
-        currentKeyframeIndex = (currentKeyframeIndex + 1) % keyframes.length;
+        currentKeyframeIndex = nextIndex;
         animationFrame = requestAnimationFrame(animate);
       }
     };
@@ -189,7 +213,7 @@ const App: React.FC = () => {
     }
 
     return () => cancelAnimationFrame(animationFrame);
-  }, [isPlaying, keyframes, attachments]);
+  }, [isPlaying, keyframes, attachments, playbackMode]);
 
 
   // --- Handlers ---
@@ -582,7 +606,23 @@ const App: React.FC = () => {
       setSelectedBoneId(null);
   };
 
-  const handleExport = () => exportAnimation(keyframes, props, attachments, exportMode, layoutMode, activeView, slotViews);
+  const handleExport = () => {
+      let exportFrames = keyframes;
+      
+      // For Ping Pong mode, we simulate it by baking the sequence into the keyframes for export.
+      // Original: A, B, C. Loop: A->B->C->A
+      // PingPong: A->B->C->B->A.
+      if (playbackMode === 'PING_PONG' && keyframes.length > 2) {
+          // Slice middle (1..n-1) and reverse
+          const middleReversed = [...keyframes].slice(1, -1).reverse().map(k => ({
+              ...k,
+              id: uuidv4() // New IDs to avoid conflicts in any potential processing
+          }));
+          exportFrames = [...keyframes, ...middleReversed];
+      }
+
+      exportAnimation(exportFrames, props, attachments, exportMode, layoutMode, activeView, slotViews);
+  };
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-900 text-gray-100 overflow-hidden">
@@ -671,6 +711,8 @@ const App: React.FC = () => {
             onPlayPause={() => setIsPlaying(!isPlaying)}
             isExpanded={isTimelineExpanded}
             onToggleExpand={() => setIsTimelineExpanded(!isTimelineExpanded)}
+            playbackMode={playbackMode}
+            setPlaybackMode={setPlaybackMode}
         />
       </div>
     </div>

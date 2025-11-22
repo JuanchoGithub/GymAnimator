@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { Keyframe } from '../types';
+import { Keyframe, PlaybackMode } from '../types';
 
 interface TimelineProps {
   keyframes: Keyframe[];
@@ -12,6 +13,8 @@ interface TimelineProps {
   onPlayPause: () => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  playbackMode: PlaybackMode;
+  setPlaybackMode: (mode: PlaybackMode) => void;
 }
 
 const Timeline: React.FC<TimelineProps> = ({
@@ -24,7 +27,9 @@ const Timeline: React.FC<TimelineProps> = ({
   isPlaying,
   onPlayPause,
   isExpanded,
-  onToggleExpand
+  onToggleExpand,
+  playbackMode,
+  setPlaybackMode
 }) => {
   return (
     <div className="h-full flex flex-col bg-gray-800 border-t border-gray-700 overflow-hidden">
@@ -36,6 +41,17 @@ const Timeline: React.FC<TimelineProps> = ({
           >
             <span className="material-icons-round text-xl">{isPlaying ? 'pause' : 'play_arrow'}</span>
           </button>
+          
+          <button
+            onClick={() => setPlaybackMode(playbackMode === 'LOOP' ? 'PING_PONG' : 'LOOP')}
+            className={`p-2 rounded transition-colors ${playbackMode === 'PING_PONG' ? 'text-yellow-500 bg-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+            title={playbackMode === 'LOOP' ? "Mode: Loop" : "Mode: Ping Pong"}
+          >
+             <span className="material-icons-round text-xl">
+                 {playbackMode === 'LOOP' ? 'repeat' : 'compare_arrows'}
+             </span>
+          </button>
+
           <span className="text-xs text-gray-400 font-mono">
             {keyframes.length} Frames
           </span>
@@ -57,48 +73,65 @@ const Timeline: React.FC<TimelineProps> = ({
       </div>
 
       {isExpanded && (
-        <div className="flex-1 overflow-x-auto p-4 flex space-x-4 items-center animate-in fade-in duration-300">
+        <div className="flex-1 overflow-x-auto p-4 flex space-x-4 items-stretch animate-in fade-in duration-300">
           {keyframes.map((frame, index) => (
             <div 
               key={frame.id}
               onClick={() => onSelectFrame(frame.id)}
               className={`
-                relative flex flex-col items-center min-w-[100px] p-2 rounded-lg border-2 cursor-pointer transition-all
+                relative flex flex-col items-center min-w-[140px] p-3 rounded-lg border-2 cursor-pointer transition-all
                 ${currentFrameId === frame.id ? 'border-yellow-500 bg-gray-700' : 'border-gray-600 bg-gray-800 hover:bg-gray-750'}
               `}
             >
-              <span className="text-xs font-bold text-gray-400 mb-2">Frame {index + 1}</span>
+              <div className="flex justify-between w-full mb-2 items-center">
+                 <span className="text-xs font-bold text-gray-400">Frame {index + 1}</span>
+                 {keyframes.length > 1 && (
+                     <button 
+                      onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteFrame(frame.id);
+                      }}
+                      className="w-5 h-5 hover:bg-red-900/50 rounded-full flex items-center justify-center text-gray-500 hover:text-red-400 transition-colors"
+                      title="Delete Frame"
+                     >
+                       <span className="material-icons-round text-[14px]">close</span>
+                     </button>
+                 )}
+              </div>
               
-              {/* Thumbnail Placeholder - could be a mini SVG */}
-              <div className="w-16 h-16 bg-gray-900 rounded flex items-center justify-center mb-2">
-                 <span className="material-icons-round text-gray-600">accessibility_new</span>
+              {/* Thumbnail Placeholder */}
+              <div className="w-full h-12 bg-gray-900 rounded flex items-center justify-center mb-3 overflow-hidden opacity-50">
+                 <span className="material-icons-round text-gray-700 text-3xl">accessibility_new</span>
               </div>
 
-              <div className="flex items-center space-x-1 w-full">
-                  <span className="material-icons-round text-xs text-gray-500">timer</span>
-                  <input 
-                      type="number"
-                      value={frame.duration}
-                      onChange={(e) => onDurationChange(frame.id, Number(e.target.value))}
-                      className="w-full bg-gray-900 text-xs text-white border border-gray-700 rounded px-1 py-0.5 text-center"
-                      onClick={(e) => e.stopPropagation()} // Prevent selecting frame when editing duration
-                  />
-                  <span className="text-[10px] text-gray-500">ms</span>
+              {/* Duration Slider */}
+              <div className="w-full mt-auto">
+                 <div className="flex items-center justify-between text-[10px] text-gray-400 mb-1">
+                    <span className="flex items-center"><span className="material-icons-round text-[10px] mr-1">timer</span> Duration</span>
+                    <span className="font-mono text-blue-300">{frame.duration}ms</span>
+                 </div>
+                 <input 
+                    type="range"
+                    min="50"
+                    max="1000"
+                    step="50"
+                    value={frame.duration}
+                    onChange={(e) => onDurationChange(frame.id, Number(e.target.value))}
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                 />
               </div>
-
-              {keyframes.length > 1 && (
-                 <button 
-                  onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteFrame(frame.id);
-                  }}
-                  className="absolute -top-2 -right-2 w-6 h-6 bg-red-600 rounded-full flex items-center justify-center text-white hover:bg-red-700 shadow-md"
-                 >
-                   <span className="material-icons-round text-xs">close</span>
-                 </button>
-              )}
             </div>
           ))}
+
+           <button
+            onClick={onAddFrame}
+            className="flex-shrink-0 flex flex-col items-center justify-center w-[140px] rounded-lg border-2 border-dashed border-gray-600 text-gray-500 hover:text-blue-400 hover:border-blue-500 hover:bg-gray-800/50 transition-all group"
+            title="Add New Frame"
+          >
+             <span className="material-icons-round text-4xl mb-2 group-hover:scale-110 transition-transform">add</span>
+             <span className="text-xs font-bold uppercase tracking-wide">Add Frame</span>
+          </button>
         </div>
       )}
     </div>

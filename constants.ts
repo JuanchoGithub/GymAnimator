@@ -2,6 +2,9 @@
 import { BodyPartType, Bone, SkeletonState, GymProp, ViewType, PropType, MuscleGroup } from './types';
 
 // --- MUSCLE MAPPING ---
+// Specific SVG paths for muscle overlays. 
+// If a muscle maps to a specific shape on a bone, it's defined here.
+// If it maps to a joint (Shoulders, Glutes), it is handled via logic in Character.tsx.
 export const MUSCLE_OVERLAYS: Partial<Record<MuscleGroup, Partial<Record<BodyPartType, Partial<Record<ViewType, string>>>>>> = {
     [MuscleGroup.CHEST]: {
         [BodyPartType.TORSO]: {
@@ -73,6 +76,20 @@ export const MUSCLE_OVERLAYS: Partial<Record<MuscleGroup, Partial<Record<BodyPar
     }
 };
 
+// Backward compatibility / General mapping if needed (kept for reference or fallback)
+export const MUSCLE_BONE_MAP: Record<MuscleGroup, BodyPartType[]> = {
+    [MuscleGroup.CHEST]: [BodyPartType.TORSO],
+    [MuscleGroup.BACK]: [BodyPartType.TORSO],
+    [MuscleGroup.ABS]: [BodyPartType.TORSO],
+    [MuscleGroup.SHOULDERS]: [BodyPartType.UPPER_ARM_L, BodyPartType.UPPER_ARM_R],
+    [MuscleGroup.BICEPS]: [BodyPartType.UPPER_ARM_L, BodyPartType.UPPER_ARM_R],
+    [MuscleGroup.TRICEPS]: [BodyPartType.UPPER_ARM_L, BodyPartType.UPPER_ARM_R],
+    [MuscleGroup.GLUTES]: [BodyPartType.HIPS], // Handled via joints in logic
+    [MuscleGroup.QUADS]: [BodyPartType.UPPER_LEG_L, BodyPartType.UPPER_LEG_R],
+    [MuscleGroup.HAMSTRINGS]: [BodyPartType.UPPER_LEG_L, BodyPartType.UPPER_LEG_R],
+    [MuscleGroup.CALVES]: [BodyPartType.LOWER_LEG_L, BodyPartType.LOWER_LEG_R]
+};
+
 // --- SKELETON DEFINITIONS ---
 
 const createBone = (
@@ -109,6 +126,7 @@ export const SKELETON_DEF: Bone[] = [
     { p: "M-9,-9 L9,-9 L9,9 L-9,9 Z", x: 0, y: -10, z: 11 } // Top: Z=11 (Above Torso)
   ),
   createBone({ id: BodyPartType.HEAD, parentId: BodyPartType.NECK, name: "Head", color: "#fca5a5", jointRadius: 0 },
+    // Removed the second shape (cranium cap) which looked like a bandana
     { p: "M-9,10 L9,10 L13,-5 L14,-25 C14,-45 8,-50 0,-50 C-8,-50 -14,-45 -14,-25 L-13,-5 Z", x: 0, y: -12, z: 20 },
     { p: "M-11,10 L11,10 L15,-5 L15,-25 C15,-45 0,-50 -11,-45 L-11,-25 L-15,-5 Z", x: 2, y: -10, z: 20 }, 
     { p: "M-13,-13 L13,-13 L13,13 L-13,13 Z", x: 0, y: 0, z: 20 } 
@@ -176,148 +194,328 @@ export const SKELETON_DEF: Bone[] = [
     { p: "M-11,0 C-18,20 -14,45 -8,60 L8,60 C11,45 12,15 11,0 Z", x: 0, y: 70, z: 5 },
     { p: "M-11,0 C-15,20 -15,45 -8,60 L8,60 C15,45 15,20 11,0 Z", x: 0, y: 70, z: 5 }
   ),
-  createBone({ id: BodyPartType.FOOT_R, parentId: BodyPartType.LOWER_LEG_R, name: "Foot R", defaultAngle: 90, color: "#ffffff", length: 20 },
+  createBone({ id: BodyPartType.FOOT_R, parentId: BodyPartType.LOWER_LEG_R, name: "Foot R", defaultAngle: -90, color: "#ffffff", length: 20 },
     { p: "M-6,0 L6,0 L6,8 C6,18 2,22 -4,22 L-6,22 Z", x: 0, y: 60, z: 4 },
-    { p: "M-6,0 L6,0 L6,8 L16,22 L-6,22 Z", x: 0, y: 60, z: 4 },
+    { p: "M-6,0 L6,0 L6,8 L16,22 L-6,22 Z", x: 0, y: 60, z: 4 }, 
     { p: "M-7,0 L7,0 L7,25 L-7,25 Z", x: 0, y: 60, z: 4 }
   ),
 ];
 
 export const INITIAL_POSE: SkeletonState = SKELETON_DEF.reduce((acc, bone) => {
-  acc[bone.id] = { FRONT: bone.defaultAngle, SIDE: bone.defaultAngle, TOP: bone.defaultAngle };
+  // Initialize separate rotations for each view.
+  let topAngle = 0;
+  if (bone.id === BodyPartType.UPPER_ARM_L) topAngle = 90;
+  if (bone.id === BodyPartType.UPPER_ARM_R) topAngle = -90;
+
+  acc[bone.id] = {
+      FRONT: bone.defaultAngle,
+      SIDE: 0,
+      TOP: topAngle
+  };
   return acc;
 }, {} as SkeletonState);
 
-export const MIRROR_MAPPING: Record<BodyPartType, BodyPartType> = {
-    [BodyPartType.UPPER_ARM_L]: BodyPartType.UPPER_ARM_R,
-    [BodyPartType.LOWER_ARM_L]: BodyPartType.LOWER_ARM_R,
-    [BodyPartType.HAND_L]: BodyPartType.HAND_R,
-    [BodyPartType.UPPER_LEG_L]: BodyPartType.UPPER_LEG_R,
-    [BodyPartType.LOWER_LEG_L]: BodyPartType.LOWER_LEG_R,
-    [BodyPartType.FOOT_L]: BodyPartType.FOOT_R,
-    [BodyPartType.UPPER_ARM_R]: BodyPartType.UPPER_ARM_L,
-    [BodyPartType.LOWER_ARM_R]: BodyPartType.LOWER_ARM_L,
-    [BodyPartType.HAND_R]: BodyPartType.HAND_L,
-    [BodyPartType.UPPER_LEG_R]: BodyPartType.UPPER_LEG_L,
-    [BodyPartType.LOWER_LEG_R]: BodyPartType.LOWER_LEG_L,
-    [BodyPartType.FOOT_R]: BodyPartType.FOOT_L,
-} as any;
+// --- PROP DEFINITIONS ---
 
-export const IK_CHAINS: Record<string, { upper: BodyPartType, lower: BodyPartType }> = {
-    [BodyPartType.HAND_L]: { upper: BodyPartType.UPPER_ARM_L, lower: BodyPartType.LOWER_ARM_L },
-    [BodyPartType.HAND_R]: { upper: BodyPartType.UPPER_ARM_R, lower: BodyPartType.LOWER_ARM_R },
-    [BodyPartType.FOOT_L]: { upper: BodyPartType.UPPER_LEG_L, lower: BodyPartType.LOWER_LEG_L },
-    [BodyPartType.FOOT_R]: { upper: BodyPartType.UPPER_LEG_R, lower: BodyPartType.LOWER_LEG_R },
+const createProp = (base: Partial<GymProp>, frontV: string, sideV: string, topV: string): Omit<GymProp, 'id' | 'attachedTo'> => {
+    return {
+        snapPoints: [], color: '#6b7280', propType: 'GENERIC', variant: 'default',
+        ...base,
+        views: {
+            FRONT: { path: frontV, viewBox: base.views?.FRONT?.viewBox || "-100 -100 200 200" },
+            SIDE: { path: sideV, viewBox: base.views?.SIDE?.viewBox || "-100 -100 200 200" },
+            TOP: { path: topV, viewBox: base.views?.TOP?.viewBox || "-100 -100 200 200" },
+        },
+        transforms: {
+            FRONT: { x: 200, y: 350, rotation: 0, scaleX: 1, scaleY: 1 },
+            SIDE: { x: 200, y: 350, rotation: 0, scaleX: 1, scaleY: 1 },
+            TOP: { x: 200, y: 200, rotation: 0, scaleX: 1, scaleY: 1 },
+        }
+    } as any;
 };
 
-export const getCablePath = (handleType: 'BAR' | 'V_BAR' | 'ROPE', showLine: boolean, isAngled: boolean = false): string => {
-    let handle = "";
-    const lineLength = 600;
-    
-    if (handleType === 'BAR') {
-        handle = "M-25,0 L25,0 M0,0 L0,-15";
-    } else if (handleType === 'V_BAR') {
-        handle = "M-15,10 L0,-10 L15,10";
-    } else if (handleType === 'ROPE') {
-        handle = "M-8,15 Q0,20 8,15 L0,-10";
+const hiddenInSide = { SIDE: { x: 0, y: 0, visible: false } };
+
+// Helper for cable paths
+export const getCablePath = (type: 'BAR' | 'V_BAR' | 'ROPE', hasLine: boolean) => {
+    const line = hasLine ? "M0,0 L0,-1000" : "";
+    switch(type) {
+        case 'BAR': 
+            return `${line} M-40,0 L40,0 L40,4 L-40,4 Z`;
+        case 'V_BAR':
+            return `${line} M0,0 L-25,25 L-22,28 L0,6 L22,28 L25,25 L0,0 Z`;
+        case 'ROPE':
+            return `${line} M-2,0 L-2,10 C-2,15 -15,30 -15,40 L-10,40 C-10,30 2,15 2,10 L2,0 Z M2,0 L2,10 C2,15 15,30 15,40 L10,40 C10,30 -2,15 -2,10 L-2,0 Z`;
+    }
+    return '';
+}
+
+// --- SMART PROP GENERATORS ---
+
+export const getSmartPath = (
+    propType: PropType, 
+    view: ViewType, 
+    variant: string | undefined,
+    scaleX: number, 
+    scaleY: number
+): string | null => {
+    if (propType === 'BARBELL') {
+        // ScaleX -> Length of bar (plates move out)
+        // ScaleY -> Size of plates (radius) and bar thickness
+        const baseLen = 180; 
+        const len = baseLen * scaleX;
+        const basePlateX = 140;
+        const plateX = basePlateX * scaleX; // Plates move out based on X scale
+        const plateRadius = 35 * scaleY;
+        const barThick = 6 * scaleY; 
+        const plateThick = 15; // Constant thickness, does not scale with X
+
+        if (view === 'SIDE') {
+            // Just circles
+            return `M-${plateRadius},0 A${plateRadius},${plateRadius} 0 1,0 ${plateRadius},0 A${plateRadius},${plateRadius} 0 1,0 -${plateRadius},0 Z M-${barThick/1.5},0 A${barThick/1.5},${barThick/1.5} 0 1,0 ${barThick/1.5},0 A${barThick/1.5},${barThick/1.5} 0 1,0 -${barThick/1.5},0 Z`;
+        }
+
+        // Front/Top
+        const bar = `M-${len},-${barThick/2} L${len},-${barThick/2} L${len},${barThick/2} L-${len},${barThick/2} Z`;
+        
+        // Left Plates
+        const pL1 = `M-${plateX},-${plateRadius} L-${plateX-plateThick},-${plateRadius} L-${plateX-plateThick},${plateRadius} L-${plateX},${plateRadius} Z`;
+        const pL2 = `M-${plateX-plateThick-2},-${plateRadius} L-${plateX-plateThick-12},-${plateRadius} L-${plateX-plateThick-12},${plateRadius} L-${plateX-plateThick-2},${plateRadius} Z`;
+        
+        // Right Plates
+        const pR1 = `M${plateX},-${plateRadius} L${plateX+plateThick},-${plateRadius} L${plateX+plateThick},${plateRadius} L${plateX},${plateRadius} Z`;
+        const pR2 = `M${plateX+plateThick+2},-${plateRadius} L${plateX+plateThick+12},-${plateRadius} L${plateX+plateThick+12},${plateRadius} L${plateX+plateThick+2},${plateRadius} Z`;
+        
+        return `${bar} ${pL1} ${pL2} ${pR1} ${pR2}`;
     }
 
-    if (!showLine) return handle;
+    if (propType === 'DUMBBELL') {
+         const baseLen = 30;
+         const len = baseLen * scaleX;
+         const r = 12 * scaleY;
+         const h = 6 * scaleY;
+         const w = 15; // plate width constant
 
-    // Vertical: Up (negative Y)
-    // Angled: 45 degrees Up-Right (positive X, negative Y)
-    // Note: ScaleY can flip this to Down or Down-Right
-    const lineEnd = isAngled ? `L${lineLength * 0.7},-${lineLength * 0.7}` : `L0,-${lineLength}`;
+         if (view === 'SIDE') {
+             return `M-${r},0 A${r},${r} 0 1,0 ${r},0 A${r},${r} 0 1,0 -${r},0 Z`;
+         }
 
-    return `${handle} M0,-10 ${lineEnd}`;
-};
+         return `
+            M-${len},-${h/2} L${len},-${h/2} L${len},${h/2} L-${len},${h/2} Z
+            M-${len},-${r} L-${len-w},-${r} L-${len-w},${r} L-${len},${r} Z
+            M${len},-${r} L${len+w},-${r} L${len+w},${r} L${len},${r} Z
+         `;
+    }
 
-export const getSmartPath = (propType: PropType, view: ViewType, variant: string | undefined, sx: number, sy: number): string | null => {
-    // Placeholder for future parametric props
+    if (propType === 'BENCH') {
+        const seatT = 10;
+        const legW = 6;
+        
+        // Base dimensions
+        const baseW = 30; // Half Width
+        const baseL = 90; // Half Length
+        const baseH = 40; // Height
+        
+        if (view === 'FRONT') {
+            if (variant === 'alternate') {
+                // Top-down look in front view
+                // ScaleX -> Width
+                // ScaleY -> Length (Visual Height)
+                const w = baseW * scaleX;
+                const l = baseL * scaleY;
+                return `M-${w},-${l} L${w},-${l} L${w},${l} L-${w},${l} Z`;
+            } else {
+                // Standard Front
+                // ScaleX -> Width
+                // ScaleY -> Leg Height
+                const w = baseW * scaleX;
+                const h = baseH * scaleY;
+                // Legs shouldn't stretch in width relative to seat unless extremely wide,
+                // but typically legs are inset by constant amount from edge.
+                const legX = Math.max(5, w - 5); 
+                return `
+                    M-${w},-${seatT} L${w},-${seatT} L${w},0 L-${w},0 Z
+                    M-${legX},0 L-${legX},${h} L-${legX-legW},${h} L-${legX-legW},0 Z
+                    M${legX},0 L${legX},${h} L${legX+legW},${h} L${legX+legW},0 Z
+                `;
+            }
+        }
+        
+        if (view === 'SIDE') {
+            // ScaleX -> Length (Visual Width)
+            // ScaleY -> Leg Height
+            const l = baseL * scaleX;
+            const h = baseH * scaleY;
+            const legX = l - 15;
+            
+            return `
+                M-${l},-${seatT} L${l},-${seatT} L${l},0 L-${l},0 Z
+                M-${legX},0 L-${legX},${h} L-${legX-legW},${h} L-${legX-legW},0 Z
+                M${legX},0 L${legX},${h} L${legX+legW},${h} L${legX+legW},0 Z
+            `;
+        }
+        
+        if (view === 'TOP') {
+            // ScaleX -> Width
+            // ScaleY -> Length
+            const w = baseW * scaleX;
+            const l = baseL * scaleY;
+             return `M-${w},-${l} L${w},-${l} L${w},${l} L-${w},${l} Z`;
+        }
+    }
+
     return null;
 };
 
-export const SAMPLE_PROPS: GymProp[] = [
-  {
-    id: 'barbell-1',
-    name: 'Barbell (Standard)',
-    propType: 'BARBELL',
-    views: {
-        FRONT: { path: "M-100,0 L100,0 M-80,0 L-80,-10 L-70,-10 L-70,0 M80,0 L80,-10 L70,-10 L70,0 M-95,-15 L-95,15 L-85,15 L-85,-15 Z M85,-15 L85,15 L95,15 L95,-15 Z", viewBox: "0 0 200 50" },
-        SIDE: { path: "M-5,-5 L5,-5 L5,5 L-5,5 Z", viewBox: "0 0 20 20" },
-        TOP: { path: "M-100,-2 L100,-2 L100,2 L-100,2 Z", viewBox: "0 0 200 10" }
+
+export const SAMPLE_PROPS = [
+  createProp(
+    {
+        name: 'Barbell', 
+        propType: 'BARBELL',
+        views: { FRONT: { viewBox: "-190 -40 380 80" }, TOP: { viewBox: "-190 -40 380 80" } } as any,
+        snapPoints: [
+            { id: 'center', name: 'Center', x: 0, y: 0 }, 
+            { id: 'close_l', name: 'Close L', x: -30, y: 0, perView: hiddenInSide }, 
+            { id: 'close_r', name: 'Close R', x: 30, y: 0, perView: hiddenInSide },
+            { id: 'medium_l', name: 'Medium L', x: -60, y: 0, perView: hiddenInSide }, 
+            { id: 'medium_r', name: 'Medium R', x: 60, y: 0, perView: hiddenInSide },
+            { id: 'wide_l', name: 'Wide L', x: -100, y: 0, perView: hiddenInSide }, 
+            { id: 'wide_r', name: 'Wide R', x: 100, y: 0, perView: hiddenInSide },
+            { id: 'outside_l', name: 'Outside L', x: -145, y: 0, perView: hiddenInSide }, 
+            { id: 'outside_r', name: 'Outside R', x: 145, y: 0, perView: hiddenInSide }
+        ]
     },
-    transforms: {
-        FRONT: { x: 200, y: 350, rotation: 0, scaleX: 1, scaleY: 1 },
-        SIDE: { x: 200, y: 350, rotation: 0, scaleX: 1, scaleY: 1 },
-        TOP: { x: 200, y: 200, rotation: 0, scaleX: 1, scaleY: 1 }
-    },
-    attachedTo: null,
-    snapPoints: [{ id: 'sp-1', name: 'Center', x: 0, y: 0 }, { id: 'sp-2', name: 'Left Grip', x: -60, y: 0 }, { id: 'sp-3', name: 'Right Grip', x: 60, y: 0 }],
-    color: "#9ca3af",
-    stroke: "black",
-    strokeWidth: 1
-  },
-  {
-    id: 'bench-flat',
-    name: 'Flat Bench',
-    propType: 'BENCH',
-    variant: 'default',
-    layer: 'back',
-    views: {
-        FRONT: { path: "M-40,0 L40,0 L40,15 L-40,15 Z M-35,15 L-35,40 M35,15 L35,40", viewBox: "0 0 100 50" },
-        SIDE: { path: "M-60,0 L60,0 L60,10 L-60,10 Z M-50,10 L-50,40 M50,10 L50,40", viewBox: "0 0 150 50" },
-        TOP: { path: "M-40,-60 L40,-60 L40,60 L-40,60 Z", viewBox: "0 0 100 150" }
-    },
-    transforms: {
-        FRONT: { x: 200, y: 400, rotation: 0, scaleX: 1, scaleY: 1 },
-        SIDE: { x: 200, y: 400, rotation: 0, scaleX: 1, scaleY: 1 },
-        TOP: { x: 200, y: 300, rotation: 0, scaleX: 1, scaleY: 1 }
-    },
-    attachedTo: null,
-    snapPoints: [],
-    color: "#1f2937"
-  },
-  {
-      id: 'cable-rope',
-      name: 'Cable (Rope)',
-      propType: 'GENERIC',
-      cableConfig: {
-          isCable: true,
-          showLine: true,
-          isAngled: false,
-          handleType: 'ROPE'
+    'M-180,-4 L180,-4 L180,4 L-180,4 Z M-140,-35 L-130,-35 L-130,35 L-140,35 Z M-152,-35 L-142,-35 L-142,35 L-152,35 Z M130,-35 L140,-35 L140,35 L130,35 Z M142,-35 L152,-35 L152,35 L142,35 Z',
+    'M-35,0 A35,35 0 1,0 35,0 A35,35 0 1,0 -35,0 Z M-4,0 A4,4 0 1,0 4,0 A4,4 0 1,0 -4,0 Z', 
+    'M-180,-4 L180,-4 L180,4 L-180,4 Z M-140,-35 L-130,-35 L-130,35 L-140,35 Z M-152,-35 L-142,-35 L-142,35 L-152,35 Z M130,-35 L140,-35 L140,35 L130,35 Z M142,-35 L152,-35 L152,35 L142,35 Z'
+  ),
+  createProp(
+      {
+          name: 'W Barbell',
+          propType: 'GENERIC', // W Bar has complex shape, keep generic scaling
+          views: { FRONT: { viewBox: "-150 -40 300 80" }, TOP: { viewBox: "-150 -40 300 80" } } as any,
+          snapPoints: [
+              { id: 'center', name: 'Center', x: 0, y: 0 },
+              { id: 'inner_l', name: 'Inner L', x: -20, y: 5 },
+              { id: 'inner_r', name: 'Inner R', x: 20, y: 5 },
+              { id: 'outer_l', name: 'Outer L', x: -50, y: -5 },
+              { id: 'outer_r', name: 'Outer R', x: 50, y: -5 }
+          ]
       },
-      views: {
-          FRONT: { path: getCablePath('ROPE', true), viewBox: "0 0 100 600" },
-          SIDE: { path: getCablePath('ROPE', true), viewBox: "0 0 100 600" },
-          TOP: { path: getCablePath('ROPE', true), viewBox: "0 0 100 600" }
+      // Front: W Shape
+      'M-140,-4 L-100,-4 L-80,-4 L-50,-10 L-20,4 L0,0 L20,4 L50,-10 L80,-4 L100,-4 L140,-4 L140,4 L100,4 L80,4 L50,-2 L20,12 L0,8 L-20,12 L-50,-2 L-80,4 L-100,4 L-140,4 Z M-100,-35 L-90,-35 L-90,35 L-100,35 Z M100,-35 L90,-35 L90,35 L100,35 Z',
+      'M-35,0 A35,35 0 1,0 35,0 A35,35 0 1,0 -35,0 Z M-4,0 A4,4 0 1,0 4,0 A4,4 0 1,0 -4,0 Z',
+      'M-140,-4 L-100,-4 L-80,-4 L-50,-10 L-20,4 L0,0 L20,4 L50,-10 L80,-4 L100,-4 L140,-4 L140,4 L100,4 L80,4 L50,-2 L20,12 L0,8 L-20,12 L-50,-2 L-80,4 L-100,4 L-140,4 Z'
+  ),
+  createProp(
+      {
+        name: 'Dumbbell',
+        propType: 'DUMBBELL',
+        views: { FRONT: { viewBox: "-35 -15 70 30" }, TOP: { viewBox: "-35 -15 70 30" } } as any,
+        snapPoints: [
+            { id: 'center', name: 'Handle', x: 0, y: 0 },
+            { id: 'disc_l', name: 'Disc L', x: -22, y: 0, perView: hiddenInSide },
+            { id: 'disc_r', name: 'Disc R', x: 22, y: 0, perView: hiddenInSide }
+        ]
       },
-      transforms: {
-        FRONT: { x: 200, y: 150, rotation: 0, scaleX: 1, scaleY: 1 },
-        SIDE: { x: 200, y: 150, rotation: 0, scaleX: 1, scaleY: 1 },
-        TOP: { x: 200, y: 200, rotation: 0, scaleX: 1, scaleY: 1 }
+      'M-30,-3 L30,-3 L30,3 L-30,3 Z M-30,-12 L-15,-12 L-15,12 L-30,12 Z M15,-12 L30,-12 L30,12 L15,12 Z',
+      'M-12,0 A12,12 0 1,0 12,0 A12,12 0 1,0 -12,0 Z', 
+      'M-30,-3 L30,-3 L30,3 L-30,3 Z M-30,-12 L-15,-12 L-15,12 L-30,12 Z M15,-12 L30,-12 L30,12 L15,12 Z'
+  ),
+  createProp(
+      {
+        name: 'Bench (Flat)',
+        propType: 'BENCH',
+        color: "#374151", stroke: "#9ca3af", strokeWidth: 2, layer: 'back',
+        views: { FRONT: { viewBox: "-30 -100 60 200" } } as any,
+        snapPoints: [{ id: 'head', name: 'Head', x: 0, y: -80 }, { id: 'center', name: 'Center', x: 0, y: 0 }]
       },
-      attachedTo: null,
-      snapPoints: [{ id: 'sp-c1', name: 'Grip', x: 0, y: 20 }],
-      color: "#333"
-  },
-  {
-    id: 'dumbbell-1',
-    name: 'Dumbbell',
-    propType: 'DUMBBELL',
-    views: {
-        FRONT: { path: "M-15,-5 L15,-5 L15,5 L-15,5 Z M-20,-10 L-15,-10 L-15,10 L-20,10 Z M15,-10 L20,-10 L20,10 L15,10 Z", viewBox: "0 0 50 30" },
-        SIDE: { path: "M-8,-8 L8,-8 L8,8 L-8,8 Z", viewBox: "0 0 20 20" },
-        TOP: { path: "M-15,-5 L15,-5 L15,5 L-15,5 Z", viewBox: "0 0 50 20" }
-    },
-    transforms: {
-        FRONT: { x: 150, y: 300, rotation: 0, scaleX: 1, scaleY: 1 },
-        SIDE: { x: 200, y: 300, rotation: 0, scaleX: 1, scaleY: 1 },
-        TOP: { x: 150, y: 250, rotation: 0, scaleX: 1, scaleY: 1 }
-    },
-    attachedTo: null,
-    snapPoints: [{ id: 'sp-d1', name: 'Handle', x: 0, y: 0 }],
-    color: "#6b7280"
-  }
+      'M-90,-20 L90,-20 L90,-10 L-90,-10 Z M-80,-10 L-80,20 M80,-10 L80,20', 
+      'M-20,-20 L20,-20 L20,-10 L-20,-10 Z M-15,-10 L-15,20 M15,-10 L15,20', 
+      'M-90,-20 L90,-20 L90,20 L-90,20 Z' 
+  ),
+  createProp(
+      {
+        name: 'Bench (45°)',
+        propType: 'GENERIC', // Complex geometry
+        color: "#374151", stroke: "#9ca3af", strokeWidth: 2, layer: 'back',
+        views: { SIDE: { viewBox: "-50 -50 100 100" } } as any,
+        snapPoints: [{ id: 'seat', name: 'Seat', x: 20, y: 10 }]
+      },
+      'M-30,20 L30,20 L30,30 L-30,30 Z M-25,10 L25,10 L20,-40 L-20,-40 Z', // Front (approx)
+      'M-30,20 L10,20 L-20,-30 L-30,-20 Z M-30,20 L-30,40 M10,20 L10,40', // Side: Angled back
+      'M-20,-40 L20,-40 L30,20 L-30,20 Z' // Top
+  ),
+  createProp(
+      {
+        name: 'Bench (90°)',
+        propType: 'GENERIC', // Complex geometry
+        color: "#374151", stroke: "#9ca3af", strokeWidth: 2, layer: 'back',
+        snapPoints: [{ id: 'seat', name: 'Seat', x: 0, y: 10 }]
+      },
+      'M-30,10 L30,10 L30,20 L-30,20 Z M-25,10 L25,10 L25,-50 L-25,-50 Z', // Front
+      'M-20,10 L20,10 L20,20 L-20,20 Z M-20,10 L-20,-50 L-10,-50 L-10,10 Z', // Side: Vertical back
+      'M-30,10 L30,10 L30,20 L-30,20 Z' // Top
+  ),
+  // Cables
+  createProp(
+      {
+          name: 'Cable (Straight)',
+          propType: 'GENERIC',
+          color: "#1f2937",
+          snapPoints: [{id: 'handle', name: 'Handle', x: 0, y: 0}],
+          cableConfig: { isCable: true, showLine: true, handleType: 'BAR' }
+      },
+      getCablePath('BAR', true), getCablePath('BAR', true), getCablePath('BAR', true)
+  ),
+  createProp(
+      {
+          name: 'Cable (V-Bar)',
+          propType: 'GENERIC',
+          color: "#1f2937",
+          snapPoints: [{id: 'handle', name: 'Handle', x: 0, y: 25}],
+          cableConfig: { isCable: true, showLine: true, handleType: 'V_BAR' }
+      },
+      getCablePath('V_BAR', true), getCablePath('V_BAR', true), getCablePath('V_BAR', true)
+  ),
+  createProp(
+      {
+          name: 'Cable (Rope)',
+          propType: 'GENERIC',
+          color: "#d4d4d4", // Rope color
+          stroke: "#1f2937", // Dark stroke
+          strokeWidth: 1,
+          snapPoints: [{id: 'handle_l', name: 'Handle L', x: -10, y: 40}, {id: 'handle_r', name: 'Handle R', x: 10, y: 40}],
+          cableConfig: { isCable: true, showLine: true, handleType: 'ROPE' }
+      },
+      getCablePath('ROPE', true), getCablePath('ROPE', true), getCablePath('ROPE', true)
+  )
 ];
+
+export const MIRROR_MAPPING: Record<BodyPartType, BodyPartType | undefined> = {
+    [BodyPartType.UPPER_ARM_L]: BodyPartType.UPPER_ARM_R,
+    [BodyPartType.UPPER_ARM_R]: BodyPartType.UPPER_ARM_L,
+    [BodyPartType.LOWER_ARM_L]: BodyPartType.LOWER_ARM_R,
+    [BodyPartType.LOWER_ARM_R]: BodyPartType.LOWER_ARM_L,
+    [BodyPartType.HAND_L]: BodyPartType.HAND_R,
+    [BodyPartType.HAND_R]: BodyPartType.HAND_L,
+    [BodyPartType.UPPER_LEG_L]: BodyPartType.UPPER_LEG_R,
+    [BodyPartType.UPPER_LEG_R]: BodyPartType.UPPER_LEG_L,
+    [BodyPartType.LOWER_LEG_L]: BodyPartType.LOWER_LEG_R,
+    [BodyPartType.LOWER_LEG_R]: BodyPartType.LOWER_LEG_L,
+    [BodyPartType.FOOT_L]: BodyPartType.FOOT_R,
+    [BodyPartType.FOOT_R]: BodyPartType.FOOT_L,
+    [BodyPartType.ROOT]: undefined,
+    [BodyPartType.TORSO]: undefined,
+    [BodyPartType.HIPS]: undefined,
+    [BodyPartType.HEAD]: undefined,
+    [BodyPartType.NECK]: undefined,
+};
+
+export const IK_CHAINS: Record<string, { upper: BodyPartType, lower: BodyPartType, end: BodyPartType }> = {
+    [BodyPartType.HAND_L]: { upper: BodyPartType.UPPER_ARM_L, lower: BodyPartType.LOWER_ARM_L, end: BodyPartType.HAND_L },
+    [BodyPartType.HAND_R]: { upper: BodyPartType.UPPER_ARM_R, lower: BodyPartType.LOWER_ARM_R, end: BodyPartType.HAND_R },
+    [BodyPartType.FOOT_L]: { upper: BodyPartType.UPPER_LEG_L, lower: BodyPartType.LOWER_LEG_L, end: BodyPartType.FOOT_L },
+    [BodyPartType.FOOT_R]: { upper: BodyPartType.UPPER_LEG_R, lower: BodyPartType.LOWER_LEG_R, end: BodyPartType.FOOT_R },
+};

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Keyframe, PlaybackMode } from '../types';
 
@@ -15,6 +14,9 @@ interface TimelineProps {
   onToggleExpand: () => void;
   playbackMode: PlaybackMode;
   setPlaybackMode: (mode: PlaybackMode) => void;
+  defaultDuration: number;
+  onDefaultDurationChange: (val: number) => void;
+  onApplyDefaultToAll: () => void;
 }
 
 const Timeline: React.FC<TimelineProps> = ({
@@ -29,7 +31,10 @@ const Timeline: React.FC<TimelineProps> = ({
   isExpanded,
   onToggleExpand,
   playbackMode,
-  setPlaybackMode
+  setPlaybackMode,
+  defaultDuration,
+  onDefaultDurationChange,
+  onApplyDefaultToAll
 }) => {
   return (
     <div className="h-full flex flex-col bg-gray-800 border-t border-gray-700 overflow-hidden">
@@ -52,7 +57,30 @@ const Timeline: React.FC<TimelineProps> = ({
              </span>
           </button>
 
-          <span className="text-xs text-gray-400 font-mono">
+          <div className="h-6 w-px bg-gray-700 mx-2"></div>
+
+          <div className="flex items-center space-x-2 bg-gray-800 p-1 rounded border border-gray-700">
+               <span className="text-[10px] text-gray-400 uppercase font-bold pl-1">Default:</span>
+               <input 
+                  type="number"
+                  min="50"
+                  max="5000"
+                  step="50"
+                  value={defaultDuration}
+                  onChange={(e) => onDefaultDurationChange(Number(e.target.value))}
+                  className="w-16 bg-gray-900 text-xs text-blue-300 border border-gray-600 rounded px-1 py-0.5 text-center focus:outline-none focus:border-blue-500"
+               />
+               <span className="text-[10px] text-gray-500">ms</span>
+               <button
+                  onClick={onApplyDefaultToAll}
+                  className="px-2 py-0.5 ml-1 bg-gray-700 hover:bg-blue-600 text-[10px] text-gray-200 rounded transition-colors uppercase font-bold border border-gray-600"
+                  title="Force Apply to ALL frames (Overwrites custom changes)"
+               >
+                   ALL
+               </button>
+          </div>
+
+          <span className="text-xs text-gray-500 font-mono ml-2">
             {keyframes.length} Frames
           </span>
         </div>
@@ -113,7 +141,7 @@ const Timeline: React.FC<TimelineProps> = ({
                  <input 
                     type="range"
                     min="50"
-                    max="1000"
+                    max="2000"
                     step="50"
                     value={frame.duration}
                     onChange={(e) => onDurationChange(frame.id, Number(e.target.value))}

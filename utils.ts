@@ -274,12 +274,13 @@ export const exportAnimation = async (
     keyframes: Keyframe[], 
     props: GymProp[],
     attachments: Record<string, { propId: string, snapPointId: string, rotationOffset: number }>,
-    mode: 'accurate' | 'interpolated' = 'accurate',
+    mode: 'accurate' | 'interpolated' | 'adaptive' = 'accurate',
     layoutMode: LayoutMode,
     activeView: ViewType,
     slotViews: ViewType[] = ['FRONT', 'SIDE', 'TOP'],
     action: 'download' | 'clipboard' = 'download',
-    backgroundColor: string = '#f3f4f6'
+    backgroundColor: string = '#f3f4f6',
+    filename: string = 'gym-animation'
 ) => {
     // 1. Determine Views to Export based on Layout
     let viewsToExport: { view: ViewType, x: number, y: number, w: number, h: number, ox: number, oy: number, scale: number }[] = [];
@@ -380,7 +381,8 @@ export const exportAnimation = async (
     
     const SAMPLE_RATE = 50; 
     
-    if (mode === 'accurate') {
+    // Accurate AND Adaptive modes both start by baking samples
+    if (mode === 'accurate' || mode === 'adaptive') {
         let currentTime = 0;
         while (currentTime <= totalDuration) {
             let accumulated = 0;
@@ -467,6 +469,7 @@ export const exportAnimation = async (
              if (currentTime > totalDuration && currentTime - SAMPLE_RATE < totalDuration) currentTime = totalDuration;
         }
     } else {
+         // Interpolated Mode: Only Keyframes
          let accumulated = 0;
          keyframes.forEach(kf => {
               const currentProps: any = {};
@@ -481,33 +484,64 @@ export const exportAnimation = async (
 
     // 4. Generate CSS
     let css = '';
+    
+    // Helper to check if frame B can be skipped (is linear between A and C)
+    const isLinear = (tA: number, valA: number, tB: number, valB: number, tC: number, valC: number) => {
+        const ratio = (tB - tA) / (tC - tA);
+        const expected = valA + (valC - valA) * ratio;
+        return Math.abs(valB - expected) < 0.05; // Tolerance
+    };
+    
+    const isTransformLinear = (tA: number, tfA: any, tB: number, tfB: any, tC: number, tfC: any) => {
+        return isLinear(tA, tfA.x, tB, tfB.x, tC, tfC.x) &&
+               isLinear(tA, tfA.y, tB, tfB.y, tC, tfC.y) &&
+               isLinear(tA, tfA.angle || tfA.rotation, tB, tfB.angle || tfB.rotation, tC, tfC.angle || tfC.rotation) &&
+               (tfA.scaleX === undefined || (isLinear(tA, tfA.scaleX, tB, tfB.scaleX, tC, tfC.scaleX))) &&
+               (tfA.scaleY === undefined || (isLinear(tA, tfA.scaleY, tB, tfB.scaleY, tC, tfC.scaleY)));
+    };
+
     viewsToExport.forEach(vObj => {
         const view = vObj.view;
         SKELETON_DEF.forEach(bone => {
             const animName = `anim-bone-${bone.id}-${view}`;
             let keyframesCss = '';
-            let lastTransform = "";
+            
+            let keptFrames = [bakedFrames[0]];
+            
+            // Only run adaptive reduction if requested
+            if (mode === 'adaptive') {
+                for (let i = 1; i < bakedFrames.length - 1; i++) {
+                    const prev = keptFrames[keptFrames.length - 1];
+                    const curr = bakedFrames[i];
+                    const next = bakedFrames[i+1];
+                    
+                    const tPrev = getGlobalTransform(bone.id, prev.pose, view);
+                    const tCurr = getGlobalTransform(bone.id, curr.pose, view);
+                    const tNext = getGlobalTransform(bone.id, next.pose, view);
 
-            bakedFrames.forEach((frame, index) => {
+                    // If current frame is NOT linear between prev and next, we must keep it.
+                    // Note: "prev" here implies we check against the last KEPT frame, 
+                    // which is essential for reducing long linear chains.
+                    if (!isTransformLinear(prev.time, tPrev, curr.time, tCurr, next.time, tNext)) {
+                        keptFrames.push(curr);
+                    }
+                }
+                keptFrames.push(bakedFrames[bakedFrames.length - 1]);
+            } else {
+                keptFrames = bakedFrames;
+            }
+
+            keptFrames.forEach((frame, index) => {
                 const percentage = (frame.time / totalDuration) * 100;
                 const globalT = getGlobalTransform(bone.id, frame.pose, view);
-                
                 const tx = fmt(globalT.x);
                 const ty = fmt(globalT.y);
                 const rot = fmt(globalT.angle);
                 const currentTransform = `translate(${tx}px, ${ty}px) rotate(${rot}deg)`;
                 
-                const nextFrame = bakedFrames[index + 1];
-                let nextTransform = null;
-                if (nextFrame) {
-                     const nextT = getGlobalTransform(bone.id, nextFrame.pose, view);
-                     nextTransform = `translate(${fmt(nextT.x)}px, ${fmt(nextT.y)}px) rotate(${fmt(nextT.angle)}deg)`;
-                }
-
-                if (index === 0 || index === bakedFrames.length - 1 || currentTransform !== lastTransform || (nextTransform && nextTransform !== currentTransform)) {
-                    keyframesCss += `\n  ${fmt(percentage)}% { transform: ${currentTransform}; }`;
-                    lastTransform = currentTransform;
-                }
+                // Simple deduplication for adjacent identical frames is good for 'accurate' mode too
+                // But 'adaptive' does it better.
+                keyframesCss += `\n  ${fmt(percentage)}% { transform: ${currentTransform}; }`;
             });
 
             if (keyframesCss) {
@@ -519,9 +553,31 @@ export const exportAnimation = async (
         props.forEach(prop => {
              const animName = `anim-prop-${prop.id}-${view}`;
              let keyframesCss = '';
-             let lastTransform = "";
+             
+             let keptFrames = [bakedFrames[0]];
+             
+             if (mode === 'adaptive') {
+                for (let i = 1; i < bakedFrames.length - 1; i++) {
+                    const prev = keptFrames[keptFrames.length - 1];
+                    const curr = bakedFrames[i];
+                    const next = bakedFrames[i+1];
+                    
+                    const tPrev = prev.props[prop.id][view];
+                    const tCurr = curr.props[prop.id][view];
+                    const tNext = next.props[prop.id][view];
 
-             bakedFrames.forEach((frame, index) => {
+                    if (tPrev && tCurr && tNext) {
+                        if (!isTransformLinear(prev.time, tPrev, curr.time, tCurr, next.time, tNext)) {
+                            keptFrames.push(curr);
+                        }
+                    }
+                }
+                keptFrames.push(bakedFrames[bakedFrames.length - 1]);
+             } else {
+                 keptFrames = bakedFrames;
+             }
+
+             keptFrames.forEach((frame, index) => {
                  const percentage = (frame.time / totalDuration) * 100;
                  const tr = frame.props[prop.id][view];
                  if (tr) {
@@ -531,18 +587,7 @@ export const exportAnimation = async (
                      const sx = fmt(tr.scaleX);
                      const sy = fmt(tr.scaleY);
                      const currentTransform = `translate(${tx}px, ${ty}px) rotate(${rot}deg) scale(${sx}, ${sy})`;
-
-                     const nextFrame = bakedFrames[index + 1];
-                     let nextTransform = null;
-                     if (nextFrame && nextFrame.props[prop.id][view]) {
-                         const nt = nextFrame.props[prop.id][view];
-                         nextTransform = `translate(${fmt(nt.x)}px, ${fmt(nt.y)}px) rotate(${fmt(nt.rotation)}deg) scale(${fmt(nt.scaleX)}, ${fmt(nt.scaleY)})`;
-                     }
-
-                     if (index === 0 || index === bakedFrames.length - 1 || currentTransform !== lastTransform || (nextTransform && nextTransform !== currentTransform)) {
-                         keyframesCss += `\n  ${fmt(percentage)}% { transform: ${currentTransform}; }`;
-                         lastTransform = currentTransform;
-                     }
+                     keyframesCss += `\n  ${fmt(percentage)}% { transform: ${currentTransform}; }`;
                  }
              });
              
@@ -575,7 +620,9 @@ export const exportAnimation = async (
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `gym-animation-${layoutMode.toLowerCase()}.svg`;
+        // Sanitize filename
+        const safeName = filename.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'animation';
+        a.download = `${safeName}.svg`;
         a.click();
     }
 };

@@ -35,18 +35,19 @@ const Character: React.FC<CharacterProps> = ({
   
   // Helper to resolve color based on body part type
   const getBoneColor = (boneId: BodyPartType, defaultColor: string): string => {
-      // Skin parts (Head, Neck, Hands, Lower Arms, Lower Legs)
+      // Skin parts (Head, Neck, Hands, Lower Arms, Lower Legs, Upper Arms)
       if (
           boneId === BodyPartType.HEAD || 
           boneId === BodyPartType.NECK || 
           boneId.includes('HAND') ||
           boneId.includes('LOWER_ARM') ||
+          boneId.includes('UPPER_ARM') ||
           boneId.includes('LOWER_LEG')
       ) {
           return appearance.skinColor;
       }
-      // Shirt parts (Torso, Upper Arms)
-      if (boneId === BodyPartType.TORSO || boneId.includes('UPPER_ARM')) {
+      // Shirt parts (Torso)
+      if (boneId === BodyPartType.TORSO) {
           return appearance.shirtColor;
       }
       // Pants parts (Hips, Upper Legs)
@@ -112,11 +113,11 @@ const Character: React.FC<CharacterProps> = ({
               jointColor = '#ef4444';
               jointClass = 'animate-pulse-red';
           } else {
-            if (bone.id.includes('LOWER_ARM')) {
-                jointColor = appearance.shirtColor;
-            } else if (bone.id.includes('LOWER_LEG')) {
+            // Lower leg joint (knee) uses pants color (shorts effect)
+            if (bone.id.includes('LOWER_LEG')) {
                 jointColor = appearance.pantsColor;
             }
+            // Removed LOWER_ARM override so elbow uses bone color (skin)
           }
 
           return (

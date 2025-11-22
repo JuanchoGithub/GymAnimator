@@ -15,6 +15,9 @@ const VIEWS: ViewType[] = ['FRONT', 'SIDE', 'TOP'];
 
 const App: React.FC = () => {
   // --- State ---
+  const [defaultDuration, setDefaultDuration] = useState<number>(500);
+  const [exerciseName, setExerciseName] = useState("My Exercise");
+  
   // Initialize keyframes with deep cloned state
   const [keyframes, setKeyframes] = useState<Keyframe[]>([
     { id: uuidv4(), duration: 500, pose: JSON.parse(JSON.stringify(INITIAL_POSE)), propTransforms: {}, activeMuscles: [] }
@@ -32,7 +35,7 @@ const App: React.FC = () => {
   // No longer using propPrompt or isGenerating
   const [isMirrorMode, setIsMirrorMode] = useState(false);
   const [isTimelineExpanded, setIsTimelineExpanded] = useState(true);
-  const [exportMode, setExportMode] = useState<'accurate' | 'interpolated'>('accurate');
+  // exportMode state removed from here as it is now managed by Header selection
   const [activeView, setActiveView] = useState<ViewType>('FRONT');
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('SINGLE');
   const [slotViews, setSlotViews] = useState<ViewType[]>(['FRONT', 'SIDE', 'TOP']);
@@ -529,13 +532,31 @@ const App: React.FC = () => {
     const currentFrame = getCurrentFrame();
     const newFrame: Keyframe = {
       id: uuidv4(),
-      duration: 500,
+      duration: defaultDuration, // Use Default Duration
       pose: JSON.parse(JSON.stringify(currentFrame.pose)), 
       propTransforms: JSON.parse(JSON.stringify(currentFrame.propTransforms)),
       activeMuscles: [...(currentFrame.activeMuscles || [])]
     };
     setKeyframes([...keyframes, newFrame]);
     setCurrentFrameId(newFrame.id);
+  };
+
+  const handleDefaultDurationChange = (newDuration: number) => {
+      const oldDuration = defaultDuration;
+      setDefaultDuration(newDuration);
+      // Automatically update frames that match the previous default duration.
+      // This preserves manual overrides if user set a specific different duration.
+      setKeyframes(prev => prev.map(k => {
+          if (k.duration === oldDuration) {
+              return { ...k, duration: newDuration };
+          }
+          return k;
+      }));
+  };
+
+  const handleForceDefaultDuration = () => {
+      // Force update all frames to the current default duration without confirmation
+      setKeyframes(prev => prev.map(k => ({ ...k, duration: defaultDuration })));
   };
 
   const handleDeleteFrame = (id: string) => {
@@ -613,7 +634,7 @@ const App: React.FC = () => {
       setSelectedBoneId(null);
   };
 
-  const handleExport = async (action: 'download' | 'clipboard' = 'download') => {
+  const handleExport = async (mode: 'accurate' | 'interpolated' | 'adaptive', action: 'download' | 'clipboard') => {
       let exportFrames = keyframes;
       
       // For Ping Pong mode, we simulate it by baking the sequence into the keyframes for export.
@@ -629,10 +650,8 @@ const App: React.FC = () => {
       }
 
       try {
-        await exportAnimation(exportFrames, props, attachments, exportMode, layoutMode, activeView, slotViews, action, appearance.backgroundColor);
-        if (action === 'clipboard') {
-            alert("SVG copied to clipboard!");
-        }
+        await exportAnimation(exportFrames, props, attachments, mode, layoutMode, activeView, slotViews, action, appearance.backgroundColor, exerciseName);
+        // Success notification is handled in Header for clipboard, download is implicit
       } catch (e) {
           console.error(e);
           if (action === 'clipboard') alert("Failed to copy to clipboard.");
@@ -657,12 +676,12 @@ const App: React.FC = () => {
         isMirrorMode={isMirrorMode}
         setIsMirrorMode={setIsMirrorMode}
         onExport={handleExport}
-        exportMode={exportMode}
-        setExportMode={setExportMode}
         activeView={activeView}
         setActiveView={setActiveView}
         layoutMode={layoutMode}
         setLayoutMode={setLayoutMode}
+        exerciseName={exerciseName}
+        setExerciseName={setExerciseName}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -709,10 +728,14 @@ const App: React.FC = () => {
             layoutMode={layoutMode}
             slotViews={slotViews}
             onUpdateSlotView={(index, view) => {
-                const newSlots = [...slotViews];
-                newSlots[index] = view;
-                setSlotViews(newSlots);
-                setActiveView(view);
+                if (index === -1) {
+                     setActiveView(view);
+                } else {
+                    const newSlots = [...slotViews];
+                    newSlots[index] = view;
+                    setSlotViews(newSlots);
+                    setActiveView(view);
+                }
             }}
             onBoneMouseDown={handleBoneMouseDown}
             onPropMouseDown={handlePropMouseDown}
@@ -743,6 +766,9 @@ const App: React.FC = () => {
             onToggleExpand={() => setIsTimelineExpanded(!isTimelineExpanded)}
             playbackMode={playbackMode}
             setPlaybackMode={setPlaybackMode}
+            defaultDuration={defaultDuration}
+            onDefaultDurationChange={handleDefaultDurationChange}
+            onApplyDefaultToAll={handleForceDefaultDuration}
         />
       </div>
     </div>

@@ -219,7 +219,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   const getGridContent = () => {
       switch(layoutMode) {
           case 'SINGLE':
-              return renderViewport(activeView, activeView, -1, false);
+              return renderViewport(activeView, activeView, -1, true);
           case 'SIDE_BY_SIDE':
               return (
                   <div className="grid grid-cols-2 gap-1 w-full h-full min-h-0">
@@ -245,7 +245,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                   </div>
               );
           default:
-              return renderViewport(activeView, activeView, -1, false);
+              return renderViewport(activeView, activeView, -1, true);
       }
   };
 

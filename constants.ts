@@ -134,7 +134,7 @@ export const SKELETON_DEF: Bone[] = [
   createBone({ id: BodyPartType.HIPS, parentId: BodyPartType.ROOT, name: "Hips", color: "#1f2937", jointRadius: 16 },
     { p: "M-16,0 L16,0 C16,0 20,20 14,25 L-14,25 C-20,20 -16,0 -16,0 Z", x: 0, y: 0, z: 12 },
     { p: "M-16,0 L16,0 C20,10 20,20 16,25 L-18,25 C-24,15 -22,5 -16,0 Z", x: 0, y: 0, z: 8 }, // Side: Glutes
-    { p: "M-18,-16 L18,-16 L18,16 L-18,16 Z", x: 0, y: 0, z: 4 } // Top: Z=4 (Below Root)
+    { p: "M-18,-16 L18,-16 L18,-16 L-18,16 Z", x: 0, y: 0, z: 4 } // Top: Z=4 (Below Root)
   ),
   // Left Arm
   createBone({ id: BodyPartType.UPPER_ARM_L, parentId: BodyPartType.TORSO, name: "Upper Arm L", defaultAngle: 45, color: "#fca5a5", length: 60 },
@@ -264,11 +264,11 @@ export const getSmartPath = (
         // ScaleY -> Size of plates (radius) and bar thickness
         const baseLen = 180; 
         const len = baseLen * scaleX;
-        const basePlateX = 140;
+        const basePlateX = 130; // Collar Position (inner edge of plates)
         const plateX = basePlateX * scaleX; // Plates move out based on X scale
         const plateRadius = 35 * scaleY;
         const barThick = 6 * scaleY; 
-        const plateThick = 15; // Constant thickness, does not scale with X
+        const plateThick = 15; // Constant thickness
 
         if (view === 'SIDE') {
             // Just circles
@@ -278,11 +278,11 @@ export const getSmartPath = (
         // Front/Top
         const bar = `M-${len},-${barThick/2} L${len},-${barThick/2} L${len},${barThick/2} L-${len},${barThick/2} Z`;
         
-        // Left Plates
-        const pL1 = `M-${plateX},-${plateRadius} L-${plateX-plateThick},-${plateRadius} L-${plateX-plateThick},${plateRadius} L-${plateX},${plateRadius} Z`;
-        const pL2 = `M-${plateX-plateThick-2},-${plateRadius} L-${plateX-plateThick-12},-${plateRadius} L-${plateX-plateThick-12},${plateRadius} L-${plateX-plateThick-2},${plateRadius} Z`;
+        // Left Plates (Symmetrical Outwards: -plateX to -[plateX + thick])
+        const pL1 = `M-${plateX},-${plateRadius} L-${plateX+plateThick},-${plateRadius} L-${plateX+plateThick},${plateRadius} L-${plateX},${plateRadius} Z`;
+        const pL2 = `M-${plateX+plateThick+2},-${plateRadius} L-${plateX+plateThick+12},-${plateRadius} L-${plateX+plateThick+12},${plateRadius} L-${plateX+plateThick+2},${plateRadius} Z`;
         
-        // Right Plates
+        // Right Plates (Symmetrical Outwards: plateX to [plateX + thick])
         const pR1 = `M${plateX},-${plateRadius} L${plateX+plateThick},-${plateRadius} L${plateX+plateThick},${plateRadius} L${plateX},${plateRadius} Z`;
         const pR2 = `M${plateX+plateThick+2},-${plateRadius} L${plateX+plateThick+12},-${plateRadius} L${plateX+plateThick+12},${plateRadius} L${plateX+plateThick+2},${plateRadius} Z`;
         
@@ -290,21 +290,26 @@ export const getSmartPath = (
     }
 
     if (propType === 'DUMBBELL') {
-         const baseLen = 30;
+         const baseLen = 25; // Handle half-length (Total 50)
          const len = baseLen * scaleX;
          const r = 12 * scaleY;
          const h = 6 * scaleY;
-         const w = 15; // plate width constant
+         const w = 15; // plate width
 
          if (view === 'SIDE') {
              return `M-${r},0 A${r},${r} 0 1,0 ${r},0 A${r},${r} 0 1,0 -${r},0 Z`;
          }
 
-         return `
-            M-${len},-${h/2} L${len},-${h/2} L${len},${h/2} L-${len},${h/2} Z
-            M-${len},-${r} L-${len-w},-${r} L-${len-w},${r} L-${len},${r} Z
-            M${len},-${r} L${len+w},-${r} L${len+w},${r} L${len},${r} Z
-         `;
+         // Bar/Handle
+         const bar = `M-${len},-${h/2} L${len},-${h/2} L${len},${h/2} L-${len},${h/2} Z`;
+         
+         // Left Plate (Outward)
+         const pL = `M-${len},-${r} L-${len+w},-${r} L-${len+w},${r} L-${len},${r} Z`;
+         
+         // Right Plate (Outward)
+         const pR = `M${len},-${r} L${len+w},-${r} L${len+w},${r} L${len},${r} Z`;
+
+         return `${bar} ${pL} ${pR}`;
     }
 
     if (propType === 'BENCH') {
@@ -380,15 +385,16 @@ export const SAMPLE_PROPS = [
             { id: 'close_r', name: 'Close R', x: 30, y: 0, perView: hiddenInSide },
             { id: 'medium_l', name: 'Medium L', x: -60, y: 0, perView: hiddenInSide }, 
             { id: 'medium_r', name: 'Medium R', x: 60, y: 0, perView: hiddenInSide },
-            { id: 'wide_l', name: 'Wide L', x: -100, y: 0, perView: hiddenInSide }, 
-            { id: 'wide_r', name: 'Wide R', x: 100, y: 0, perView: hiddenInSide },
-            { id: 'outside_l', name: 'Outside L', x: -145, y: 0, perView: hiddenInSide }, 
-            { id: 'outside_r', name: 'Outside R', x: 145, y: 0, perView: hiddenInSide }
+            { id: 'wide_l', name: 'Wide L', x: -90, y: 0, perView: hiddenInSide }, 
+            { id: 'wide_r', name: 'Wide R', x: 90, y: 0, perView: hiddenInSide },
+            { id: 'outside_l', name: 'Outside L', x: -120, y: 0, perView: hiddenInSide }, 
+            { id: 'outside_r', name: 'Outside R', x: 120, y: 0, perView: hiddenInSide }
         ]
     },
-    'M-180,-4 L180,-4 L180,4 L-180,4 Z M-140,-35 L-130,-35 L-130,35 L-140,35 Z M-152,-35 L-142,-35 L-142,35 L-152,35 Z M130,-35 L140,-35 L140,35 L130,35 Z M142,-35 L152,-35 L152,35 L142,35 Z',
+    // Symmetrical Path: Bar -180 to 180. Plates +/- 130 to 157
+    'M-180,-4 L180,-4 L180,4 L-180,4 Z M-130,-35 L-145,-35 L-145,35 L-130,35 Z M-147,-35 L-157,-35 L-157,35 L-147,35 Z M130,-35 L145,-35 L145,35 L130,35 Z M147,-35 L157,-35 L157,35 L147,35 Z',
     'M-35,0 A35,35 0 1,0 35,0 A35,35 0 1,0 -35,0 Z M-4,0 A4,4 0 1,0 4,0 A4,4 0 1,0 -4,0 Z', 
-    'M-180,-4 L180,-4 L180,4 L-180,4 Z M-140,-35 L-130,-35 L-130,35 L-140,35 Z M-152,-35 L-142,-35 L-142,35 L-152,35 Z M130,-35 L140,-35 L140,35 L130,35 Z M142,-35 L152,-35 L152,35 L142,35 Z'
+    'M-180,-4 L180,-4 L180,4 L-180,4 Z M-130,-35 L-145,-35 L-145,35 L-130,35 Z M-147,-35 L-157,-35 L-157,35 L-147,35 Z M130,-35 L145,-35 L145,35 L130,35 Z M147,-35 L157,-35 L157,35 L147,35 Z'
   ),
   createProp(
       {
@@ -412,16 +418,19 @@ export const SAMPLE_PROPS = [
       {
         name: 'Dumbbell',
         propType: 'DUMBBELL',
-        views: { FRONT: { viewBox: "-35 -15 70 30" }, TOP: { viewBox: "-35 -15 70 30" } } as any,
+        views: { FRONT: { viewBox: "-45 -15 90 30" }, TOP: { viewBox: "-45 -15 90 30" } } as any,
         snapPoints: [
-            { id: 'center', name: 'Handle', x: 0, y: 0 },
-            { id: 'disc_l', name: 'Disc L', x: -22, y: 0, perView: hiddenInSide },
-            { id: 'disc_r', name: 'Disc R', x: 22, y: 0, perView: hiddenInSide }
+            { id: 'center', name: 'Center', x: 0, y: 0 },
+            { id: 'handle_l', name: 'Handle L', x: -10, y: 0, perView: hiddenInSide },
+            { id: 'handle_r', name: 'Handle R', x: 10, y: 0, perView: hiddenInSide },
+            { id: 'disc_l', name: 'Disc L', x: -30, y: 0, perView: hiddenInSide },
+            { id: 'disc_r', name: 'Disc R', x: 30, y: 0, perView: hiddenInSide }
         ]
       },
-      'M-30,-3 L30,-3 L30,3 L-30,3 Z M-30,-12 L-15,-12 L-15,12 L-30,12 Z M15,-12 L30,-12 L30,12 L15,12 Z',
+      // Symmetrical Path: Bar -25 to 25. Plates +/- 25 to 40.
+      'M-25,-3 L25,-3 L25,3 L-25,3 Z M-25,-12 L-40,-12 L-40,12 L-25,12 Z M25,-12 L40,-12 L40,12 L25,12 Z',
       'M-12,0 A12,12 0 1,0 12,0 A12,12 0 1,0 -12,0 Z', 
-      'M-30,-3 L30,-3 L30,3 L-30,3 Z M-30,-12 L-15,-12 L-15,12 L-30,12 Z M15,-12 L30,-12 L30,12 L15,12 Z'
+      'M-25,-3 L25,-3 L25,3 L-25,3 Z M-25,-12 L-40,-12 L-40,12 L-25,12 Z M25,-12 L40,-12 L40,12 L25,12 Z'
   ),
   createProp(
       {

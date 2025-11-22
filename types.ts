@@ -103,5 +103,6 @@ export interface Appearance {
     pantsColor: string;
     shoesColor: string;
     skinColor: string;
+    hairColor: string;
     backgroundColor: string;
 }

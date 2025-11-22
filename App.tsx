@@ -42,6 +42,7 @@ const App: React.FC = () => {
       pantsColor: "#1f2937",
       shoesColor: "#ffffff",
       skinColor: "#fca5a5",
+      hairColor: "#111827",
       backgroundColor: "#111827"
   });
 

@@ -45,6 +45,57 @@ const CollapsibleSection: React.FC<{ title: string; children: React.ReactNode; d
     );
 };
 
+const SkeletonTreeItem: React.FC<{
+    bone: typeof SKELETON_DEF[0];
+    selectedBoneId: BodyPartType | null;
+    onSelectBone: (id: BodyPartType, e: React.MouseEvent) => void;
+    depth: number;
+}> = ({ bone, selectedBoneId, onSelectBone, depth }) => {
+    const [collapsed, setCollapsed] = useState(false);
+    const children = SKELETON_DEF.filter(b => b.parentId === bone.id);
+    const hasChildren = children.length > 0;
+
+    return (
+        <li>
+            <div 
+                className={`flex items-center text-xs py-1 rounded cursor-pointer transition-colors select-none
+                    ${selectedBoneId === bone.id ? 'bg-blue-900/50 text-blue-200 border border-blue-800' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'}
+                `}
+                style={{ paddingLeft: depth === 0 ? '4px' : '0px' }} 
+            >
+                {/* Expand Toggle */}
+                <button 
+                    className={`p-0.5 mr-1 rounded hover:bg-gray-700 text-gray-500 ${!hasChildren ? 'invisible' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); setCollapsed(!collapsed); }}
+                >
+                    <span className="material-icons-round text-[10px] block">
+                        {collapsed ? 'chevron_right' : 'expand_more'}
+                    </span>
+                </button>
+                
+                <div className="flex items-center flex-1" onClick={(e) => onSelectBone(bone.id, e)}>
+                    <span className="w-1.5 h-1.5 rounded-full mr-2 flex-shrink-0" style={{ backgroundColor: bone.color }}></span>
+                    {bone.name}
+                </div>
+            </div>
+            
+            {!collapsed && hasChildren && (
+                <ul className="pl-3 space-y-1 border-l border-gray-700 ml-2">
+                     {children.map(child => (
+                         <SkeletonTreeItem 
+                            key={child.id} 
+                            bone={child} 
+                            selectedBoneId={selectedBoneId} 
+                            onSelectBone={onSelectBone}
+                            depth={depth + 1}
+                         />
+                     ))}
+                </ul>
+            )}
+        </li>
+    );
+};
+
 export const Sidebar: React.FC<SidebarProps> = ({
   selectedBoneId,
   selectedPropId,
@@ -67,6 +118,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const activeBoneDef = SKELETON_DEF.find(b => b.id === selectedBoneId);
   const activeProp = props.find(p => p.id === selectedPropId);
+  const [isSkeletonCollapsed, setIsSkeletonCollapsed] = useState(false);
+  const [isPropsCollapsed, setIsPropsCollapsed] = useState(false);
 
   // Helper to update prop transform with synchronization
   const updatePropTransform = (propId: string, view: ViewType, field: keyof PropViewTransform, value: number) => {
@@ -90,7 +143,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           const newPath = getCablePath(p.cableConfig.handleType, showLine);
           // Update path for all views since cables are usually uniform in this simple app, 
           // or specific views. The `getCablePath` is just a helper for the 2D shape.
-          // In a robust 3D system, this would be different.
           
           const newViews = { ...p.views };
           (['FRONT', 'SIDE', 'TOP'] as ViewType[]).forEach(v => {
@@ -113,31 +165,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       updatePropTransform(prop.id, view, 'scaleY', currentScale * -1);
   };
 
-  // Recursive function to render skeleton tree
-  const renderSkeletonTree = (parentId: BodyPartType | null, depth = 0) => {
-      const children = SKELETON_DEF.filter(b => b.parentId === parentId);
-      if (children.length === 0) return null;
-
-      return (
-          <ul className={`pl-${depth === 0 ? 0 : 2} space-y-1 border-l border-gray-700 ml-1`}>
-              {children.map(bone => (
-                  <li key={bone.id}>
-                      <div 
-                          className={`
-                             flex items-center text-xs px-2 py-1 rounded cursor-pointer transition-colors
-                             ${selectedBoneId === bone.id ? 'bg-blue-900/50 text-blue-200 border border-blue-800' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'}
-                          `}
-                          onClick={(e) => onSelectBone(bone.id, e)}
-                      >
-                          <span className="w-1.5 h-1.5 rounded-full mr-2" style={{ backgroundColor: bone.color }}></span>
-                          {bone.name}
-                      </div>
-                      {renderSkeletonTree(bone.id, depth + 1)}
-                  </li>
-              ))}
-          </ul>
-      );
-  };
+  const rootBones = SKELETON_DEF.filter(b => b.parentId === null);
 
   return (
     <div className="w-64 bg-gray-800 border-r border-gray-700 p-2 flex flex-col gap-2 overflow-y-auto scrollbar-thin">
@@ -158,6 +186,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <label className="text-[10px] text-gray-500 mb-1">Shoes</label>
                         <input type="color" value={appearance.shoesColor} onChange={e => setAppearance({...appearance, shoesColor: e.target.value})} className="w-full h-6 rounded cursor-pointer" />
                     </div>
+                    <div className="flex flex-col">
+                        <label className="text-[10px] text-gray-500 mb-1">Hair</label>
+                        <input type="color" value={appearance.hairColor} onChange={e => setAppearance({...appearance, hairColor: e.target.value})} className="w-full h-6 rounded cursor-pointer" />
+                    </div>
                      <div className="flex flex-col">
                         <label className="text-[10px] text-gray-500 mb-1">Background</label>
                         <div className="flex space-x-1">
@@ -175,37 +207,70 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
         </CollapsibleSection>
 
-        {/* HIERARCHY */}
-        <CollapsibleSection title="Hierarchy" defaultOpen={true}>
+        {/* SCENE HIERARCHY */}
+        <CollapsibleSection title="Scene" defaultOpen={true}>
             <div className="max-h-60 overflow-y-auto pr-1">
                 {/* Skeleton */}
                 <div className="mb-2">
-                     <h3 className="text-[10px] text-gray-500 uppercase font-bold mb-1 pl-1">Skeleton</h3>
-                     {renderSkeletonTree(null)}
+                     <div 
+                        className="flex items-center cursor-pointer hover:bg-gray-800 rounded px-1 py-0.5 mb-1"
+                        onClick={() => setIsSkeletonCollapsed(!isSkeletonCollapsed)}
+                     >
+                         <span className="material-icons-round text-sm text-gray-500 mr-1">
+                             {isSkeletonCollapsed ? 'chevron_right' : 'expand_more'}
+                         </span>
+                         <h3 className="text-[10px] text-gray-500 uppercase font-bold select-none">Skeleton</h3>
+                     </div>
+                     
+                     {!isSkeletonCollapsed && (
+                         <ul className="pl-1 ml-1 border-l border-gray-700 space-y-1">
+                             {rootBones.map(bone => (
+                                 <SkeletonTreeItem 
+                                    key={bone.id} 
+                                    bone={bone} 
+                                    selectedBoneId={selectedBoneId} 
+                                    onSelectBone={onSelectBone}
+                                    depth={0}
+                                 />
+                             ))}
+                         </ul>
+                     )}
                 </div>
+                
                 {/* Props */}
                 <div>
-                    <h3 className="text-[10px] text-gray-500 uppercase font-bold mb-1 pl-1 border-t border-gray-700 pt-2">Props</h3>
-                    {props.length === 0 ? (
-                        <div className="text-[10px] text-gray-600 italic pl-2">No objects</div>
-                    ) : (
-                        <ul className="space-y-1 pl-1 border-l border-gray-700 ml-1">
-                            {props.map(p => (
-                                <li 
-                                    key={p.id} 
-                                    className={`text-xs flex items-center justify-between px-2 py-1 rounded cursor-pointer hover:bg-gray-800 ${selectedPropId === p.id ? 'bg-gray-700 text-white font-semibold border-l-2 border-yellow-500' : 'text-gray-400'}`}
-                                    onClick={() => onSelectProp(p.id)}
-                                >
-                                    <span className="truncate">{p.name}</span>
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); onDeleteProp(p.id); }}
-                                        className="text-gray-500 hover:text-red-400"
+                     <div 
+                        className="flex items-center cursor-pointer hover:bg-gray-800 rounded px-1 py-0.5 mb-1 border-t border-gray-700 pt-2"
+                        onClick={() => setIsPropsCollapsed(!isPropsCollapsed)}
+                     >
+                         <span className="material-icons-round text-sm text-gray-500 mr-1">
+                             {isPropsCollapsed ? 'chevron_right' : 'expand_more'}
+                         </span>
+                         <h3 className="text-[10px] text-gray-500 uppercase font-bold select-none">Props</h3>
+                     </div>
+
+                    {!isPropsCollapsed && (
+                        props.length === 0 ? (
+                            <div className="text-[10px] text-gray-600 italic pl-6">No objects</div>
+                        ) : (
+                            <ul className="space-y-1 pl-1 border-l border-gray-700 ml-2">
+                                {props.map(p => (
+                                    <li 
+                                        key={p.id} 
+                                        className={`text-xs flex items-center justify-between px-2 py-1 rounded cursor-pointer hover:bg-gray-800 ${selectedPropId === p.id ? 'bg-gray-700 text-white font-semibold border-l-2 border-yellow-500' : 'text-gray-400'}`}
+                                        onClick={() => onSelectProp(p.id)}
                                     >
-                                        <span className="material-icons-round text-[10px]">close</span>
-                                    </button>
-                                </li>
-                            ))}
-                        </ul>
+                                        <span className="truncate">{p.name}</span>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); onDeleteProp(p.id); }}
+                                            className="text-gray-500 hover:text-red-400"
+                                        >
+                                            <span className="material-icons-round text-[10px]">close</span>
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )
                     )}
                 </div>
             </div>

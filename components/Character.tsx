@@ -26,22 +26,29 @@ const Character: React.FC<CharacterProps> = ({
       pantsColor: "#1f2937",
       shoesColor: "#ffffff",
       skinColor: "#fca5a5",
+      hairColor: "#111827",
       backgroundColor: "#111827"
   }
 }) => {
   
   // Helper to resolve color based on body part type
   const getBoneColor = (boneId: BodyPartType, defaultColor: string): string => {
-      // Skin parts (Head, Neck, Hands)
-      if (boneId === BodyPartType.HEAD || boneId === BodyPartType.NECK || boneId.includes('HAND')) {
+      // Skin parts (Head, Neck, Hands, Lower Arms, Lower Legs)
+      if (
+          boneId === BodyPartType.HEAD || 
+          boneId === BodyPartType.NECK || 
+          boneId.includes('HAND') ||
+          boneId.includes('LOWER_ARM') ||
+          boneId.includes('LOWER_LEG')
+      ) {
           return appearance.skinColor;
       }
-      // Shirt parts (Torso, Arms)
-      if (boneId === BodyPartType.TORSO || boneId.includes('ARM')) {
+      // Shirt parts (Torso, Upper Arms)
+      if (boneId === BodyPartType.TORSO || boneId.includes('UPPER_ARM')) {
           return appearance.shirtColor;
       }
-      // Pants parts (Hips, Upper/Lower Legs)
-      if (boneId === BodyPartType.HIPS || boneId.includes('LEG')) {
+      // Pants parts (Hips, Upper Legs)
+      if (boneId === BodyPartType.HIPS || boneId.includes('UPPER_LEG')) {
           return appearance.pantsColor;
       }
       // Shoes (Feet)
@@ -83,6 +90,14 @@ const Character: React.FC<CharacterProps> = ({
           
           const fillColor = getBoneColor(bone.id, bone.color);
 
+          // Determine Joint Color specifically
+          let jointColor = fillColor;
+          if (bone.id.includes('LOWER_ARM')) {
+              jointColor = appearance.shirtColor;
+          } else if (bone.id.includes('LOWER_LEG')) {
+              jointColor = appearance.pantsColor;
+          }
+
           return (
               <g
                 key={bone.id}
@@ -96,12 +111,7 @@ const Character: React.FC<CharacterProps> = ({
                 className="group"
                 style={{ cursor: isSelected ? 'grabbing' : 'grab' }}
               >
-                {/* Joint Circle - Rendered first (below bone path) */}
-                {showJoint && (
-                     <circle cx="0" cy="0" r={effectiveRadius} fill={fillColor} className="pointer-events-none" />
-                )}
-
-                {/* Bone Path */}
+                {/* Bone Path - Rendered first so joint covers the connection point if needed */}
                 <path
                   d={viewDef.path}
                   fill={fillColor}
@@ -110,13 +120,18 @@ const Character: React.FC<CharacterProps> = ({
                   className="transition-colors duration-150 ease-in-out hover:fill-yellow-500/20 cursor-pointer pointer-events-auto"
                 />
 
+                {/* Joint Circle - Rendered on top */}
+                {showJoint && (
+                     <circle cx="0" cy="0" r={effectiveRadius} fill={jointColor} className="pointer-events-none" />
+                )}
+
                 {/* Face Details & Hair */}
                 {bone.id === BodyPartType.HEAD && (
                     <g className="pointer-events-none">
-                        {/* Hair - Black */}
-                        {view === 'FRONT' && <path d="M-14,-38 C-16,-60 16,-60 14,-38 C10,-45 -10,-45 -14,-38 Z" fill="#111827" />}
-                        {view === 'SIDE' && <path d="M14,-38 C15,-55 -5,-60 -18,-45 C-25,-35 -24,-10 -14,-5 L-10,-5 L-10,-20 L8,-38 Z" fill="#111827" />}
-                        {view === 'TOP' && <circle cx="0" cy="-2" r="14" fill="#111827" />}
+                        {/* Hair */}
+                        {view === 'FRONT' && <path d="M-14,-38 C-16,-60 16,-60 14,-38 C10,-45 -10,-45 -14,-38 Z" fill={appearance.hairColor} />}
+                        {view === 'SIDE' && <path d="M14,-38 C15,-55 -5,-60 -18,-45 C-25,-35 -24,-10 -14,-5 L-10,-5 L-10,-20 L8,-38 Z" fill={appearance.hairColor} />}
+                        {view === 'TOP' && <circle cx="0" cy="-2" r="14" fill={appearance.hairColor} />}
 
                         {view === 'FRONT' && (
                             <g opacity="0.6" fill="#aa4444">

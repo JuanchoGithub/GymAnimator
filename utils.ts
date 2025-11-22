@@ -7,6 +7,7 @@ import { SKELETON_DEF, IK_CHAINS } from "./constants";
 
 export const toRadians = (deg: number) => (deg * Math.PI) / 180;
 export const toDegrees = (rad: number) => (rad * 180) / Math.PI;
+const fmt = (n: number) => Number(n.toFixed(1));
 
 export interface Point {
     x: number;
@@ -246,10 +247,6 @@ export const syncDumbbells = (
                     Math.abs(transform.y - newY) > 0.1 || 
                     Math.abs(transform.rotation - newRot) > 0.1
                 ) {
-                    // When syncing via IK/Attachment, we only update the specific view
-                    // Because attachments might be fundamentally different per view (2D approximation)
-                    // However, if we wanted strict 3D-like sync here, we would need a different approach.
-                    // For now, attachment overrides the strict sync rules locally.
                     updatedProps[propIndex] = {
                         ...updatedProps[propIndex],
                         transforms: {
@@ -281,7 +278,6 @@ export const exportAnimation = (
     slotViews: ViewType[] = ['FRONT', 'SIDE', 'TOP']
 ) => {
     // 1. Determine Views to Export based on Layout
-    // Structure: { view, x, y, w, h, ox, oy, scale }
     let viewsToExport: { view: ViewType, x: number, y: number, w: number, h: number, ox: number, oy: number, scale: number }[] = [];
     let width = 400;
     let height = 500;
@@ -308,11 +304,8 @@ export const exportAnimation = (
             width = 800;
             height = 500;
             viewsToExport = [
-                // Left Column: Full height (500), Scale 1. Represents the "Large" view (visually 2x the others).
                 { view: slotViews[0], x: 0, y: 0, w: 400, h: 500, ox: 0, oy: 0, scale: 1 },
-                // Right Top: Half height (250), Scale 0.5. Centered horizontally in 400px slot (Content 200px wide).
                 { view: slotViews[1], x: 400, y: 0, w: 400, h: 250, ox: 100, oy: 0, scale: 0.5 },
-                // Right Bottom: Half height (250), Scale 0.5. Centered horizontally.
                 { view: slotViews[2], x: 400, y: 250, w: 400, h: 250, ox: 100, oy: 0, scale: 0.5 }
             ];
             break;
@@ -324,28 +317,53 @@ export const exportAnimation = (
 
     viewsToExport.forEach(v => {
         const el = document.getElementById(`viewport-${v.view}`);
-        const svg = el?.querySelector('svg');
-        if (svg) {
-            // Draw Background for this slot (The viewport boundary)
-            svgContentInner += `<rect x="${v.x}" y="${v.y}" width="${v.w}" height="${v.h}" fill="#f3f4f6" stroke="#e5e7eb" stroke-width="2"/>\n`;
+        const svgOriginal = el?.querySelector('svg');
+        if (svgOriginal) {
+            const svg = svgOriginal.cloneNode(true) as SVGSVGElement;
 
-            // Extract inner contents (bones, props)
-            // We wrap them in a group to position them according to the layout + scale
+            // Robust DOM Cleanup for Export
+            const allElements = svg.querySelectorAll('*');
+            allElements.forEach((node: Element) => {
+                const cls = node.getAttribute('class') || '';
+
+                // Remove selection artifacts
+                if (cls.includes('animate-pulse')) {
+                    node.remove();
+                    return;
+                }
+                // Remove specific UI elements by attribute pattern
+                // Selection Circle Handle (r=4)
+                if (node.tagName === 'circle' && node.getAttribute('r') === '4') {
+                    node.remove();
+                    return;
+                }
+                // Prop selection highlight path (stroke yellow, fill none)
+                if (node.tagName === 'path' && node.getAttribute('stroke') === '#facc15' && node.getAttribute('fill') === 'none') {
+                    node.remove();
+                    return;
+                }
+                // Reset Bone selection stroke
+                if (node.getAttribute('stroke') === '#facc15') {
+                    node.removeAttribute('stroke');
+                    node.removeAttribute('stroke-width');
+                }
+
+                // Remove attributes not needed for rendering
+                node.removeAttribute('class');
+                node.removeAttribute('style');
+                node.removeAttribute('cursor');
+                node.removeAttribute('pointer-events');
+                node.removeAttribute('onmousedown');
+                node.removeAttribute('onmousemove');
+                node.removeAttribute('onmouseup');
+            });
+            
+            svgContentInner += `<rect x="${v.x}" y="${v.y}" width="${v.w}" height="${v.h}" fill="#f3f4f6" stroke="#e5e7eb" stroke-width="2"/>\n`;
             svgContentInner += `<g transform="translate(${v.x + v.ox}, ${v.y + v.oy}) scale(${v.scale})">\n`;
             
-            // Use XMLSerializer to ensure valid XML (fixes tag mismatch errors like <circle>)
             Array.from(svg.children).forEach(child => {
                 let str = serializer.serializeToString(child);
-                
-                // Clean up selection highlights from export
-                str = str.replace(/stroke="#facc15"/g, 'stroke="none"');
-                
-                // Remove pulsing selection circles (hiding them)
-                str = str.replace(/class="[^"]*animate-pulse[^"]*"/g, 'display="none"'); 
-                
-                // Remove namespace clutter if repeated
                 str = str.replace(/ xmlns="http:\/\/www.w3.org\/2000\/svg"/g, '');
-
                 svgContentInner += str + '\n';
             });
 
@@ -356,7 +374,8 @@ export const exportAnimation = (
     // 3. Generate Animation CSS
     const totalDuration = keyframes.reduce((sum, k) => sum + k.duration, 0);
     const bakedFrames: { time: number; pose: SkeletonState; props: Record<string, Record<ViewType, PropViewTransform>> }[] = [];
-    const SAMPLE_RATE = 30; 
+    
+    const SAMPLE_RATE = 50; 
     
     if (mode === 'accurate') {
         let currentTime = 0;
@@ -463,33 +482,71 @@ export const exportAnimation = (
         const view = vObj.view;
         SKELETON_DEF.forEach(bone => {
             const animName = `anim-bone-${bone.id}-${view}`;
-            css += `\n@keyframes ${animName} {`;
-            bakedFrames.forEach((frame) => {
+            let keyframesCss = '';
+            let lastTransform = "";
+
+            bakedFrames.forEach((frame, index) => {
                 const percentage = (frame.time / totalDuration) * 100;
-                
-                // Calculate Global Transform specifically for Export CSS
                 const globalT = getGlobalTransform(bone.id, frame.pose, view);
                 
-                css += `\n  ${percentage.toFixed(2)}% { transform: translate(${globalT.x.toFixed(2)}px, ${globalT.y.toFixed(2)}px) rotate(${globalT.angle.toFixed(2)}deg); }`;
+                const tx = fmt(globalT.x);
+                const ty = fmt(globalT.y);
+                const rot = fmt(globalT.angle);
+                const currentTransform = `translate(${tx}px, ${ty}px) rotate(${rot}deg)`;
+                
+                const nextFrame = bakedFrames[index + 1];
+                let nextTransform = null;
+                if (nextFrame) {
+                     const nextT = getGlobalTransform(bone.id, nextFrame.pose, view);
+                     nextTransform = `translate(${fmt(nextT.x)}px, ${fmt(nextT.y)}px) rotate(${fmt(nextT.angle)}deg)`;
+                }
+
+                if (index === 0 || index === bakedFrames.length - 1 || currentTransform !== lastTransform || (nextTransform && nextTransform !== currentTransform)) {
+                    keyframesCss += `\n  ${fmt(percentage)}% { transform: ${currentTransform}; }`;
+                    lastTransform = currentTransform;
+                }
             });
-            css += `\n}`;
-            // The animation applies to the element ID. 
-            // The element is inside a <g> translated by (v.x + v.ox, v.y + v.oy), so the 0,0 origin is correct relative to that group.
-            css += `\n#bone-${bone.id}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; transform-origin: 0px 0px; }`;
+
+            if (keyframesCss) {
+                css += `\n@keyframes ${animName} {${keyframesCss}\n}`;
+                css += `\n#bone-${bone.id}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; transform-origin: 0px 0px; }`;
+            }
         });
 
         props.forEach(prop => {
              const animName = `anim-prop-${prop.id}-${view}`;
-             css += `\n@keyframes ${animName} {`;
-             bakedFrames.forEach(frame => {
+             let keyframesCss = '';
+             let lastTransform = "";
+
+             bakedFrames.forEach((frame, index) => {
                  const percentage = (frame.time / totalDuration) * 100;
                  const tr = frame.props[prop.id][view];
                  if (tr) {
-                     css += `\n  ${percentage.toFixed(2)}% { transform: translate(${tr.x.toFixed(1)}px, ${tr.y.toFixed(1)}px) rotate(${tr.rotation.toFixed(1)}deg) scale(${tr.scaleX.toFixed(2)}, ${tr.scaleY.toFixed(2)}); }`;
+                     const tx = fmt(tr.x);
+                     const ty = fmt(tr.y);
+                     const rot = fmt(tr.rotation);
+                     const sx = fmt(tr.scaleX);
+                     const sy = fmt(tr.scaleY);
+                     const currentTransform = `translate(${tx}px, ${ty}px) rotate(${rot}deg) scale(${sx}, ${sy})`;
+
+                     const nextFrame = bakedFrames[index + 1];
+                     let nextTransform = null;
+                     if (nextFrame && nextFrame.props[prop.id][view]) {
+                         const nt = nextFrame.props[prop.id][view];
+                         nextTransform = `translate(${fmt(nt.x)}px, ${fmt(nt.y)}px) rotate(${fmt(nt.rotation)}deg) scale(${fmt(nt.scaleX)}, ${fmt(nt.scaleY)})`;
+                     }
+
+                     if (index === 0 || index === bakedFrames.length - 1 || currentTransform !== lastTransform || (nextTransform && nextTransform !== currentTransform)) {
+                         keyframesCss += `\n  ${fmt(percentage)}% { transform: ${currentTransform}; }`;
+                         lastTransform = currentTransform;
+                     }
                  }
              });
-             css += `\n}`;
-             css += `\n#prop-${prop.id}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; transform-origin: 0px 0px; }`;
+             
+             if (keyframesCss) {
+                css += `\n@keyframes ${animName} {${keyframesCss}\n}`;
+                css += `\n#prop-${prop.id}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; transform-origin: 0px 0px; }`;
+             }
         });
     });
 

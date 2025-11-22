@@ -1,5 +1,4 @@
 
-
 import { BodyPartType, SkeletonState, GymProp, Keyframe, PropViewTransform, ViewType, LayoutMode, SnapPoint } from "./types";
 import { SKELETON_DEF, IK_CHAINS } from "./constants";
 
@@ -80,6 +79,9 @@ export const getSnapPointDef = (sp: SnapPoint, view: ViewType) => {
     }
     return { x: sp.x, y: sp.y, visible: true };
 };
+
+// Export dummy for type resolution in case of circular deps, but prefer using constants import
+export const getSmartPath = (propType: any, view: any, variant: any, sx: any, sy: any) => null;
 
 export const synchronizePropViews = (prop: GymProp, changedView: ViewType, newTransform: PropViewTransform): GymProp => {
     const updated = { 
@@ -268,14 +270,15 @@ export const syncDumbbells = (
     return changed ? updatedProps : currentProps;
 };
 
-export const exportAnimation = (
+export const exportAnimation = async (
     keyframes: Keyframe[], 
     props: GymProp[],
     attachments: Record<string, { propId: string, snapPointId: string, rotationOffset: number }>,
     mode: 'accurate' | 'interpolated' = 'accurate',
     layoutMode: LayoutMode,
     activeView: ViewType,
-    slotViews: ViewType[] = ['FRONT', 'SIDE', 'TOP']
+    slotViews: ViewType[] = ['FRONT', 'SIDE', 'TOP'],
+    action: 'download' | 'clipboard' = 'download'
 ) => {
     // 1. Determine Views to Export based on Layout
     let viewsToExport: { view: ViewType, x: number, y: number, w: number, h: number, ox: number, oy: number, scale: number }[] = [];
@@ -558,11 +561,20 @@ export const exportAnimation = (
   ${svgContentInner}
 </svg>
     `;
-    
-    const blob = new Blob([svgOutput], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `gym-animation-${layoutMode.toLowerCase()}.svg`;
-    a.click();
+
+    if (action === 'clipboard') {
+        try {
+            await navigator.clipboard.writeText(svgOutput);
+        } catch (err) {
+            console.error("Failed to copy SVG to clipboard", err);
+            throw err;
+        }
+    } else {
+        const blob = new Blob([svgOutput], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `gym-animation-${layoutMode.toLowerCase()}.svg`;
+        a.click();
+    }
 };

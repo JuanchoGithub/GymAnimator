@@ -1,5 +1,5 @@
 {
-  "name": "GymAnimator",
+  "name": "Gym Tracker - Animator",
   "description": "A specialized SVG skeletal animation tool for creating consistent exercise animations with gym props.",
   "requestFramePermissions": []
 }

@@ -3,6 +3,7 @@ import React from 'react';
 import Character from './Character';
 import { GymProp, SkeletonState, BodyPartType, ViewType, LayoutMode, Appearance } from '../types';
 import { getSnapPointDef } from '../utils';
+import { getSmartPath } from '../constants';
 
 interface CanvasProps {
     svgRef: React.RefObject<SVGSVGElement>;
@@ -57,15 +58,29 @@ export const Canvas: React.FC<CanvasProps> = ({
           const viewDef = prop.views[view];
           if(!viewDef) return null;
 
-          // Use independent view transform
+          // Determine Path and Transform
           const transform = prop.transforms[view];
+          let pathData = viewDef.path;
+          let finalScaleX = transform.scaleX;
+          let finalScaleY = transform.scaleY;
+
+          // Check if we have a "smart" parametric path for this prop
+          const smartPath = getSmartPath(prop.propType, view, prop.variant, transform.scaleX || 1, transform.scaleY || 1);
+          
+          if (smartPath) {
+              pathData = smartPath;
+              // If we use smart path, we baked the scale into the path data, so CSS scale is 1.
+              finalScaleX = 1;
+              finalScaleY = 1;
+          }
+
           const isDraggingBone = dragState?.isDragging && dragState.type === 'BONE';
 
           return (
             <g 
                 key={prop.id} 
                 id={`prop-${prop.id}-${view}`}
-                transform={`translate(${transform.x}, ${transform.y}) rotate(${transform.rotation}) scale(${transform.scaleX}, ${transform.scaleY})`}
+                transform={`translate(${transform.x}, ${transform.y}) rotate(${transform.rotation}) scale(${finalScaleX}, ${finalScaleY})`}
                 onMouseDown={(e) => {
                     e.stopPropagation();
                     onSetActiveView(view);
@@ -75,10 +90,10 @@ export const Canvas: React.FC<CanvasProps> = ({
                 className="group"
             >
                 {isSelected && (
-                    <path d={viewDef.path} fill="none" stroke="#facc15" strokeWidth="4" opacity="0.5"/>
+                    <path d={pathData} fill="none" stroke="#facc15" strokeWidth="4" opacity="0.5"/>
                 )}
                 <path 
-                    d={viewDef.path} 
+                    d={pathData} 
                     fill={prop.color} 
                     stroke={prop.stroke || "none"}
                     strokeWidth={prop.strokeWidth || 0}
@@ -92,8 +107,8 @@ export const Canvas: React.FC<CanvasProps> = ({
 
                      // Calculate inverse scale to keep snap points circular and consistent size
                      const baseRadius = 5;
-                     const scaleX = transform.scaleX || 1;
-                     const scaleY = transform.scaleY || 1;
+                     const scaleX = finalScaleX || 1;
+                     const scaleY = finalScaleY || 1;
                      const rx = baseRadius / Math.abs(scaleX);
                      const ry = baseRadius / Math.abs(scaleY);
                      const strokeWidth = 1.5 / Math.max(Math.abs(scaleX), Math.abs(scaleY));

@@ -561,6 +561,8 @@ const App: React.FC = () => {
        const newProp: GymProp = {
         id: uuidv4(),
         name: preset.name,
+        propType: preset.propType,
+        variant: preset.variant,
         views: preset.views,
         transforms: {
             FRONT: { x: 200, y: 350, rotation: 0, scaleX: 1, scaleY: 1 },
@@ -606,7 +608,7 @@ const App: React.FC = () => {
       setSelectedBoneId(null);
   };
 
-  const handleExport = () => {
+  const handleExport = async (action: 'download' | 'clipboard' = 'download') => {
       let exportFrames = keyframes;
       
       // For Ping Pong mode, we simulate it by baking the sequence into the keyframes for export.
@@ -621,7 +623,15 @@ const App: React.FC = () => {
           exportFrames = [...keyframes, ...middleReversed];
       }
 
-      exportAnimation(exportFrames, props, attachments, exportMode, layoutMode, activeView, slotViews);
+      try {
+        await exportAnimation(exportFrames, props, attachments, exportMode, layoutMode, activeView, slotViews, action);
+        if (action === 'clipboard') {
+            alert("SVG copied to clipboard!");
+        }
+      } catch (e) {
+          console.error(e);
+          if (action === 'clipboard') alert("Failed to copy to clipboard.");
+      }
   };
 
   return (

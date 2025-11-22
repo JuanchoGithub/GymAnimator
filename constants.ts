@@ -1,5 +1,5 @@
 
-import { BodyPartType, Bone, SkeletonState, GymProp, ViewType } from './types';
+import { BodyPartType, Bone, SkeletonState, GymProp, ViewType, PropType } from './types';
 
 // --- SKELETON DEFINITIONS ---
 
@@ -114,8 +114,6 @@ export const SKELETON_DEF: Bone[] = [
 
 export const INITIAL_POSE: SkeletonState = SKELETON_DEF.reduce((acc, bone) => {
   // Initialize separate rotations for each view.
-  // We can provide some smarter defaults if we want, but 0 is safe (Straight down).
-  // For Top view arms, 90/-90 is a good starting point to look "T-pose-ish"
   let topAngle = 0;
   if (bone.id === BodyPartType.UPPER_ARM_L) topAngle = 90;
   if (bone.id === BodyPartType.UPPER_ARM_R) topAngle = -90;
@@ -132,7 +130,7 @@ export const INITIAL_POSE: SkeletonState = SKELETON_DEF.reduce((acc, bone) => {
 
 const createProp = (base: Partial<GymProp>, frontV: string, sideV: string, topV: string): Omit<GymProp, 'id' | 'attachedTo'> => {
     return {
-        snapPoints: [], color: '#6b7280',
+        snapPoints: [], color: '#6b7280', propType: 'GENERIC', variant: 'default',
         ...base,
         views: {
             FRONT: { path: frontV, viewBox: base.views?.FRONT?.viewBox || "-100 -100 200 200" },
@@ -163,10 +161,129 @@ export const getCablePath = (type: 'BAR' | 'V_BAR' | 'ROPE', hasLine: boolean) =
     return '';
 }
 
+// --- SMART PROP GENERATORS ---
+
+export const getSmartPath = (
+    propType: PropType, 
+    view: ViewType, 
+    variant: string | undefined,
+    scaleX: number, 
+    scaleY: number
+): string | null => {
+    if (propType === 'BARBELL') {
+        // ScaleX -> Length of bar (plates move out)
+        // ScaleY -> Size of plates (radius) and bar thickness
+        const baseLen = 180; 
+        const len = baseLen * scaleX;
+        const basePlateX = 140;
+        const plateX = basePlateX * scaleX; // Plates move out based on X scale
+        const plateRadius = 35 * scaleY;
+        const barThick = 6 * scaleY; 
+        const plateThick = 15; // Constant thickness, does not scale with X
+
+        if (view === 'SIDE') {
+            // Just circles
+            return `M-${plateRadius},0 A${plateRadius},${plateRadius} 0 1,0 ${plateRadius},0 A${plateRadius},${plateRadius} 0 1,0 -${plateRadius},0 Z M-${barThick/1.5},0 A${barThick/1.5},${barThick/1.5} 0 1,0 ${barThick/1.5},0 A${barThick/1.5},${barThick/1.5} 0 1,0 -${barThick/1.5},0 Z`;
+        }
+
+        // Front/Top
+        const bar = `M-${len},-${barThick/2} L${len},-${barThick/2} L${len},${barThick/2} L-${len},${barThick/2} Z`;
+        
+        // Left Plates
+        const pL1 = `M-${plateX},-${plateRadius} L-${plateX-plateThick},-${plateRadius} L-${plateX-plateThick},${plateRadius} L-${plateX},${plateRadius} Z`;
+        const pL2 = `M-${plateX-plateThick-2},-${plateRadius} L-${plateX-plateThick-12},-${plateRadius} L-${plateX-plateThick-12},${plateRadius} L-${plateX-plateThick-2},${plateRadius} Z`;
+        
+        // Right Plates
+        const pR1 = `M${plateX},-${plateRadius} L${plateX+plateThick},-${plateRadius} L${plateX+plateThick},${plateRadius} L${plateX},${plateRadius} Z`;
+        const pR2 = `M${plateX+plateThick+2},-${plateRadius} L${plateX+plateThick+12},-${plateRadius} L${plateX+plateThick+12},${plateRadius} L${plateX+plateThick+2},${plateRadius} Z`;
+        
+        return `${bar} ${pL1} ${pL2} ${pR1} ${pR2}`;
+    }
+
+    if (propType === 'DUMBBELL') {
+         const baseLen = 30;
+         const len = baseLen * scaleX;
+         const r = 12 * scaleY;
+         const h = 6 * scaleY;
+         const w = 15; // plate width constant
+
+         if (view === 'SIDE') {
+             return `M-${r},0 A${r},${r} 0 1,0 ${r},0 A${r},${r} 0 1,0 -${r},0 Z`;
+         }
+
+         return `
+            M-${len},-${h/2} L${len},-${h/2} L${len},${h/2} L-${len},${h/2} Z
+            M-${len},-${r} L-${len-w},-${r} L-${len-w},${r} L-${len},${r} Z
+            M${len},-${r} L${len+w},-${r} L${len+w},${r} L${len},${r} Z
+         `;
+    }
+
+    if (propType === 'BENCH') {
+        const seatT = 10;
+        const legW = 6;
+        
+        // Base dimensions
+        const baseW = 30; // Half Width
+        const baseL = 90; // Half Length
+        const baseH = 40; // Height
+        
+        if (view === 'FRONT') {
+            if (variant === 'alternate') {
+                // Top-down look in front view
+                // ScaleX -> Width
+                // ScaleY -> Length (Visual Height)
+                const w = baseW * scaleX;
+                const l = baseL * scaleY;
+                return `M-${w},-${l} L${w},-${l} L${w},${l} L-${w},${l} Z`;
+            } else {
+                // Standard Front
+                // ScaleX -> Width
+                // ScaleY -> Leg Height
+                const w = baseW * scaleX;
+                const h = baseH * scaleY;
+                // Legs shouldn't stretch in width relative to seat unless extremely wide,
+                // but typically legs are inset by constant amount from edge.
+                const legX = Math.max(5, w - 5); 
+                return `
+                    M-${w},-${seatT} L${w},-${seatT} L${w},0 L-${w},0 Z
+                    M-${legX},0 L-${legX},${h} L-${legX-legW},${h} L-${legX-legW},0 Z
+                    M${legX},0 L${legX},${h} L${legX+legW},${h} L${legX+legW},0 Z
+                `;
+            }
+        }
+        
+        if (view === 'SIDE') {
+            // ScaleX -> Length (Visual Width)
+            // ScaleY -> Leg Height
+            const l = baseL * scaleX;
+            const h = baseH * scaleY;
+            const legX = l - 15;
+            
+            return `
+                M-${l},-${seatT} L${l},-${seatT} L${l},0 L-${l},0 Z
+                M-${legX},0 L-${legX},${h} L-${legX-legW},${h} L-${legX-legW},0 Z
+                M${legX},0 L${legX},${h} L${legX+legW},${h} L${legX+legW},0 Z
+            `;
+        }
+        
+        if (view === 'TOP') {
+            // ScaleX -> Width
+            // ScaleY -> Length
+            const w = baseW * scaleX;
+            const l = baseL * scaleY;
+             return `M-${w},-${l} L${w},-${l} L${w},${l} L-${w},${l} Z`;
+        }
+    }
+
+    return null;
+};
+
+
 export const SAMPLE_PROPS = [
   createProp(
     {
         name: 'Barbell', 
+        propType: 'BARBELL',
         views: { FRONT: { viewBox: "-190 -40 380 80" }, TOP: { viewBox: "-190 -40 380 80" } } as any,
         snapPoints: [
             { id: 'center', name: 'Center', x: 0, y: 0 }, 
@@ -187,6 +304,7 @@ export const SAMPLE_PROPS = [
   createProp(
       {
           name: 'W Barbell',
+          propType: 'GENERIC', // W Bar has complex shape, keep generic scaling
           views: { FRONT: { viewBox: "-150 -40 300 80" }, TOP: { viewBox: "-150 -40 300 80" } } as any,
           snapPoints: [
               { id: 'center', name: 'Center', x: 0, y: 0 },
@@ -204,6 +322,7 @@ export const SAMPLE_PROPS = [
   createProp(
       {
         name: 'Dumbbell',
+        propType: 'DUMBBELL',
         views: { FRONT: { viewBox: "-35 -15 70 30" }, TOP: { viewBox: "-35 -15 70 30" } } as any,
         snapPoints: [
             { id: 'center', name: 'Handle', x: 0, y: 0 },
@@ -218,6 +337,7 @@ export const SAMPLE_PROPS = [
   createProp(
       {
         name: 'Bench (Flat)',
+        propType: 'BENCH',
         color: "#374151", stroke: "#9ca3af", strokeWidth: 2, layer: 'back',
         views: { FRONT: { viewBox: "-30 -100 60 200" } } as any,
         snapPoints: [{ id: 'head', name: 'Head', x: 0, y: -80 }, { id: 'center', name: 'Center', x: 0, y: 0 }]
@@ -229,6 +349,7 @@ export const SAMPLE_PROPS = [
   createProp(
       {
         name: 'Bench (45°)',
+        propType: 'GENERIC', // Complex geometry
         color: "#374151", stroke: "#9ca3af", strokeWidth: 2, layer: 'back',
         views: { SIDE: { viewBox: "-50 -50 100 100" } } as any,
         snapPoints: [{ id: 'seat', name: 'Seat', x: 20, y: 10 }]
@@ -240,6 +361,7 @@ export const SAMPLE_PROPS = [
   createProp(
       {
         name: 'Bench (90°)',
+        propType: 'GENERIC', // Complex geometry
         color: "#374151", stroke: "#9ca3af", strokeWidth: 2, layer: 'back',
         snapPoints: [{ id: 'seat', name: 'Seat', x: 0, y: 10 }]
       },
@@ -251,6 +373,7 @@ export const SAMPLE_PROPS = [
   createProp(
       {
           name: 'Cable (Straight)',
+          propType: 'GENERIC',
           color: "#1f2937",
           snapPoints: [{id: 'handle', name: 'Handle', x: 0, y: 0}],
           cableConfig: { isCable: true, showLine: true, handleType: 'BAR' }
@@ -260,6 +383,7 @@ export const SAMPLE_PROPS = [
   createProp(
       {
           name: 'Cable (V-Bar)',
+          propType: 'GENERIC',
           color: "#1f2937",
           snapPoints: [{id: 'handle', name: 'Handle', x: 0, y: 25}],
           cableConfig: { isCable: true, showLine: true, handleType: 'V_BAR' }
@@ -269,6 +393,7 @@ export const SAMPLE_PROPS = [
   createProp(
       {
           name: 'Cable (Rope)',
+          propType: 'GENERIC',
           color: "#d4d4d4", // Rope color
           stroke: "#1f2937", // Dark stroke
           strokeWidth: 1,

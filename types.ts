@@ -22,6 +22,7 @@ export enum BodyPartType {
 export type ViewType = 'FRONT' | 'SIDE' | 'TOP';
 export type LayoutMode = 'SINGLE' | 'SIDE_BY_SIDE' | 'TOP_BOTTOM' | 'THREE_SPLIT';
 export type PlaybackMode = 'LOOP' | 'PING_PONG';
+export type PropType = 'GENERIC' | 'BARBELL' | 'DUMBBELL' | 'BENCH';
 
 export interface ViewDefinition {
     path: string;
@@ -79,6 +80,8 @@ export interface PropViewDefinition {
 export interface GymProp {
   id: string;
   name: string;
+  propType: PropType;
+  variant?: 'default' | 'alternate'; // Used for Benches (Side/Front look)
   views: Record<ViewType, PropViewDefinition>;
   
   // Independent transforms per view

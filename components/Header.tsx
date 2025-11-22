@@ -5,7 +5,7 @@ import { ViewType, LayoutMode } from '../types';
 interface HeaderProps {
   isMirrorMode: boolean;
   setIsMirrorMode: (val: boolean) => void;
-  onExport: () => void;
+  onExport: (action: 'download' | 'clipboard') => void;
   exportMode: 'accurate' | 'interpolated';
   setExportMode: (mode: 'accurate' | 'interpolated') => void;
   activeView: ViewType;
@@ -86,12 +86,22 @@ export const Header: React.FC<HeaderProps> = ({
               <span className={isMirrorMode ? "text-yellow-400 font-semibold" : "text-gray-400"}>Mirror</span>
           </label>
 
-          <button 
-              onClick={onExport}
-              className="bg-yellow-500 hover:bg-yellow-400 text-gray-900 px-4 py-1.5 rounded font-semibold text-sm flex items-center transition-colors shadow-lg shadow-yellow-500/20"
-          >
-              <span className="material-icons-round text-sm mr-2">download</span> Export
-          </button>
+          <div className="flex items-center bg-yellow-500 hover:bg-yellow-400 rounded shadow-lg shadow-yellow-500/20 text-gray-900 font-semibold text-sm transition-colors">
+              <button 
+                  onClick={() => onExport('download')}
+                  className="px-3 py-1.5 flex items-center border-r border-yellow-600/30 hover:bg-yellow-300/20 rounded-l"
+                  title="Download SVG File"
+              >
+                  <span className="material-icons-round text-sm mr-2">download</span> Export
+              </button>
+              <button 
+                  onClick={() => onExport('clipboard')}
+                  className="px-2 py-1.5 flex items-center hover:bg-yellow-300/20 rounded-r"
+                  title="Copy SVG to Clipboard"
+              >
+                   <span className="material-icons-round text-sm">content_copy</span>
+              </button>
+          </div>
       </div>
     </header>
   );

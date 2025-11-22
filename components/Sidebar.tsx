@@ -134,6 +134,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       });
       setProps(updatedProps);
   };
+  
+  const updatePropVariant = (propId: string, variant: 'default' | 'alternate') => {
+      setProps(props.map(p => p.id === propId ? { ...p, variant } : p));
+  };
 
   // Helper to update prop cable config
   const updateCableConfig = (propId: string, showLine: boolean) => {
@@ -141,8 +145,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           if (p.id !== propId || !p.cableConfig) return p;
           
           const newPath = getCablePath(p.cableConfig.handleType, showLine);
-          // Update path for all views since cables are usually uniform in this simple app, 
-          // or specific views. The `getCablePath` is just a helper for the 2D shape.
           
           const newViews = { ...p.views };
           (['FRONT', 'SIDE', 'TOP'] as ViewType[]).forEach(v => {
@@ -372,48 +374,107 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         </div>
                     )}
 
+                    {/* Special Props Control (Bench Variant) */}
+                    {activeProp.propType === 'BENCH' && activeView === 'FRONT' && (
+                         <div className="bg-gray-800 p-2 rounded border border-gray-600 mb-2">
+                            <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Bench View</div>
+                             <label className="flex items-center space-x-2 cursor-pointer">
+                                 <input 
+                                    type="checkbox" 
+                                    checked={activeProp.variant === 'alternate'}
+                                    onChange={(e) => updatePropVariant(activeProp.id, e.target.checked ? 'alternate' : 'default')}
+                                    className="w-3 h-3 rounded text-blue-500 focus:ring-0 bg-gray-700 border-gray-600"
+                                 />
+                                 <span className="text-xs text-gray-300">Top-Down Look</span>
+                             </label>
+                        </div>
+                    )}
+
                     {/* Transforms */}
                     <div className="grid grid-cols-2 gap-2">
-                        <div>
-                            <span className="text-[10px] text-gray-500 block mb-1">Pos X</span>
-                            <input 
-                                type="number" 
-                                value={Math.round(activeProp.transforms[activeView].x)}
-                                onChange={(e) => updatePropTransform(activeProp.id, activeView, 'x', Number(e.target.value))}
-                                className="w-full bg-gray-800 text-xs text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center"
-                            />
+                        {/* Position */}
+                        <div className="col-span-2">
+                             <div className="mb-2">
+                                <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                                    <span>Position X</span>
+                                    <span>{Math.round(activeProp.transforms[activeView].x)}</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    min="-200"
+                                    max="600"
+                                    step="1"
+                                    value={activeProp.transforms[activeView].x}
+                                    onChange={(e) => updatePropTransform(activeProp.id, activeView, 'x', Number(e.target.value))}
+                                    className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                />
+                             </div>
+                             <div>
+                                <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                                    <span>Position Y</span>
+                                    <span>{Math.round(activeProp.transforms[activeView].y)}</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    min="-200"
+                                    max="700"
+                                    step="1"
+                                    value={activeProp.transforms[activeView].y}
+                                    onChange={(e) => updatePropTransform(activeProp.id, activeView, 'y', Number(e.target.value))}
+                                    className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                />
+                             </div>
                         </div>
-                        <div>
-                            <span className="text-[10px] text-gray-500 block mb-1">Pos Y</span>
+
+                         <div className="col-span-2 border-t border-gray-700 pt-2">
+                            <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                                <span>Rotation</span>
+                                <span>{Math.round(activeProp.transforms[activeView].rotation)}°</span>
+                            </div>
                             <input 
-                                type="number" 
-                                value={Math.round(activeProp.transforms[activeView].y)}
-                                onChange={(e) => updatePropTransform(activeProp.id, activeView, 'y', Number(e.target.value))}
-                                className="w-full bg-gray-800 text-xs text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center"
-                            />
-                        </div>
-                         <div>
-                            <span className="text-[10px] text-gray-500 block mb-1">Rotation</span>
-                            <input 
-                                type="number" 
-                                value={Math.round(activeProp.transforms[activeView].rotation)}
+                                type="range"
+                                min="-180"
+                                max="180"
+                                value={activeProp.transforms[activeView].rotation}
                                 onChange={(e) => updatePropTransform(activeProp.id, activeView, 'rotation', Number(e.target.value))}
-                                className="w-full bg-gray-800 text-xs text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center"
+                                className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                             />
                         </div>
-                         <div>
-                            <span className="text-[10px] text-gray-500 block mb-1">Scale</span>
-                            <input 
-                                type="number" 
-                                step="0.1"
-                                value={Number((activeProp.transforms[activeView].scaleX || 1).toFixed(2))}
-                                onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    updatePropTransform(activeProp.id, activeView, 'scaleX', val);
-                                    updatePropTransform(activeProp.id, activeView, 'scaleY', val);
-                                }}
-                                className="w-full bg-gray-800 text-xs text-gray-200 border border-gray-600 rounded px-1 py-0.5 text-center"
-                            />
+
+                        <div className="col-span-2 border-t border-gray-700 pt-2 mt-1">
+                            <div className="text-[10px] text-gray-400 font-bold mb-2 uppercase">Scaling</div>
+                            
+                            <div className="mb-2">
+                                <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                                    <span>Scale X (Width/Length)</span>
+                                    <span>{Number((activeProp.transforms[activeView].scaleX || 1).toFixed(2))}x</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    min="0.2"
+                                    max="3"
+                                    step="0.05"
+                                    value={activeProp.transforms[activeView].scaleX || 1}
+                                    onChange={(e) => updatePropTransform(activeProp.id, activeView, 'scaleX', Number(e.target.value))}
+                                    className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-green-500"
+                                />
+                            </div>
+
+                            <div>
+                                <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                                    <span>Scale Y (Height/Size)</span>
+                                    <span>{Number((activeProp.transforms[activeView].scaleY || 1).toFixed(2))}x</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    min="0.2"
+                                    max="3"
+                                    step="0.05"
+                                    value={activeProp.transforms[activeView].scaleY || 1}
+                                    onChange={(e) => updatePropTransform(activeProp.id, activeView, 'scaleY', Number(e.target.value))}
+                                    className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-green-500"
+                                />
+                            </div>
                         </div>
                     </div>
 

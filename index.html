@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -25,6 +26,14 @@
       }
       ::-webkit-scrollbar-thumb:hover {
         background: #6b7280; 
+      }
+      
+      @keyframes pulse-red {
+        0%, 100% { fill: #ef4444; opacity: 1; }
+        50% { fill: #991b1b; opacity: 0.8; }
+      }
+      .animate-pulse-red {
+        animation: pulse-red 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
       }
     </style>
   <script type="importmap">

@@ -1,5 +1,94 @@
 
-import { BodyPartType, Bone, SkeletonState, GymProp, ViewType, PropType } from './types';
+import { BodyPartType, Bone, SkeletonState, GymProp, ViewType, PropType, MuscleGroup } from './types';
+
+// --- MUSCLE MAPPING ---
+// Specific SVG paths for muscle overlays. 
+// If a muscle maps to a specific shape on a bone, it's defined here.
+// If it maps to a joint (Shoulders, Glutes), it is handled via logic in Character.tsx.
+export const MUSCLE_OVERLAYS: Partial<Record<MuscleGroup, Partial<Record<BodyPartType, Partial<Record<ViewType, string>>>>>> = {
+    [MuscleGroup.CHEST]: {
+        [BodyPartType.TORSO]: {
+            FRONT: "M-36,-75 L36,-75 L28,-45 L-28,-45 Z", // Upper Chest
+            SIDE: "M0,-75 L28,-75 C32,-55 28,-40 20,-40 L0,-40 Z", // Upper Front
+            TOP: "M-42,-18 C-42,-18 0,-26 42,-18 L42,0 L-42,0 Z"
+        }
+    },
+    [MuscleGroup.ABS]: {
+        [BodyPartType.TORSO]: {
+            FRONT: "M-20,-45 L20,-45 L12,0 L-12,0 Z", // Lower Center
+            SIDE: "M0,-40 L20,-40 C20,-10 15,0 15,0 L0,0 Z" // Lower Front
+        }
+    },
+    [MuscleGroup.BACK]: {
+        [BodyPartType.TORSO]: {
+             FRONT: "M-36,-75 L-28,-45 L-15,0 L-22,-20 L-36,-60 Z M36,-75 L28,-45 L15,0 L22,-20 L36,-60 Z", // Lats wings
+             SIDE: "M0,-75 L-20,-75 C-18,-40 -15,-10 -15,0 L0,0 Z", // Back curve
+             TOP: "M-42,-18 C-42,-18 0,-26 42,-18 L42,-18 L42,-30 L-42,-30 Z" 
+        }
+    },
+    [MuscleGroup.BICEPS]: {
+        [BodyPartType.UPPER_ARM_L]: {
+            FRONT: "M-6,10 C-12,20 -12,40 -6,50 L6,50 C12,40 12,20 6,10 Z", // Center/Inner
+            SIDE: "M0,10 L11,10 C18,30 18,45 10,55 L0,55 Z" // Front half
+        },
+        [BodyPartType.UPPER_ARM_R]: {
+            FRONT: "M-6,10 C-12,20 -12,40 -6,50 L6,50 C12,40 12,20 6,10 Z",
+            SIDE: "M0,10 L11,10 C18,30 18,45 10,55 L0,55 Z"
+        }
+    },
+    [MuscleGroup.TRICEPS]: {
+         [BodyPartType.UPPER_ARM_L]: {
+            FRONT: "M-10,10 L-6,10 L-6,50 L-10,50 Z M10,10 L6,10 L6,50 L10,50 Z", // Sides
+            SIDE: "M0,10 L-11,10 C-18,30 -18,45 -10,55 L0,55 Z" // Back half
+        },
+        [BodyPartType.UPPER_ARM_R]: {
+            FRONT: "M-10,10 L-6,10 L-6,50 L-10,50 Z M10,10 L6,10 L6,50 L10,50 Z",
+            SIDE: "M0,10 L-11,10 C-18,30 -18,45 -10,55 L0,55 Z"
+        }
+    },
+    [MuscleGroup.QUADS]: {
+        [BodyPartType.UPPER_LEG_L]: {
+            FRONT: "M-8,10 C-14,25 -12,50 -6,60 L6,60 C12,50 14,25 8,10 Z", // Front center
+            SIDE: "M0,10 L12,10 C18,30 18,50 10,60 L0,60 Z" // Front half
+        },
+        [BodyPartType.UPPER_LEG_R]: {
+            FRONT: "M-8,10 C-14,25 -12,50 -6,60 L6,60 C12,50 14,25 8,10 Z",
+            SIDE: "M0,10 L12,10 C18,30 18,50 10,60 L0,60 Z"
+        }
+    },
+    [MuscleGroup.HAMSTRINGS]: {
+        [BodyPartType.UPPER_LEG_L]: {
+            SIDE: "M0,10 L-12,10 C-18,30 -18,50 -10,60 L0,60 Z" // Back half
+        },
+        [BodyPartType.UPPER_LEG_R]: {
+             SIDE: "M0,10 L-12,10 C-18,30 -18,50 -10,60 L0,60 Z"
+        }
+    },
+     [MuscleGroup.CALVES]: {
+        [BodyPartType.LOWER_LEG_L]: {
+             FRONT: "M-6,10 C-10,20 -10,40 -4,50 L4,50 C10,40 10,20 6,10 Z",
+             SIDE: "M0,10 L-8,10 C-14,25 -12,45 -6,55 L0,55 Z" // Back of lower leg
+        },
+        [BodyPartType.LOWER_LEG_R]: {
+             FRONT: "M-6,10 C-10,20 -10,40 -4,50 L4,50 C10,40 10,20 6,10 Z",
+             SIDE: "M0,10 L-8,10 C-14,25 -12,45 -6,55 L0,55 Z"
+        }
+    }
+};
+
+// Backward compatibility / General mapping if needed (kept for reference or fallback)
+export const MUSCLE_BONE_MAP: Record<MuscleGroup, BodyPartType[]> = {
+    [MuscleGroup.CHEST]: [BodyPartType.TORSO],
+    [MuscleGroup.BACK]: [BodyPartType.TORSO],
+    [MuscleGroup.ABS]: [BodyPartType.TORSO],
+    [MuscleGroup.SHOULDERS]: [BodyPartType.UPPER_ARM_L, BodyPartType.UPPER_ARM_R],
+    [MuscleGroup.BICEPS]: [BodyPartType.UPPER_ARM_L, BodyPartType.UPPER_ARM_R],
+    [MuscleGroup.TRICEPS]: [BodyPartType.UPPER_ARM_L, BodyPartType.UPPER_ARM_R],
+    [MuscleGroup.GLUTES]: [BodyPartType.HIPS], // Handled via joints in logic
+    [MuscleGroup.QUADS]: [BodyPartType.UPPER_LEG_L, BodyPartType.UPPER_LEG_R],
+    [MuscleGroup.HAMSTRINGS]: [BodyPartType.UPPER_LEG_L, BodyPartType.UPPER_LEG_R],
+    [MuscleGroup.CALVES]: [BodyPartType.LOWER_LEG_L, BodyPartType.LOWER_LEG_R]
+};
 
 // --- SKELETON DEFINITIONS ---
 

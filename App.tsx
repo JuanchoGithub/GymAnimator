@@ -5,7 +5,7 @@ import Timeline from './components/Timeline';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { Canvas } from './components/Canvas';
-import { BodyPartType, Keyframe, SkeletonState, GymProp, PropViewTransform, ViewType, LayoutMode, Appearance, PlaybackMode } from './types';
+import { BodyPartType, Keyframe, SkeletonState, GymProp, PropViewTransform, ViewType, LayoutMode, Appearance, PlaybackMode, MuscleGroup } from './types';
 import { INITIAL_POSE, SAMPLE_PROPS, SKELETON_DEF, MIRROR_MAPPING, IK_CHAINS } from './constants';
 import { getGlobalTransform, solveTwoBoneIK, toDegrees, normalizeAngle, transformPoint, syncDumbbells, exportAnimation, Point, getSnapPointDef, synchronizePropViews } from './utils';
 
@@ -17,7 +17,7 @@ const App: React.FC = () => {
   // --- State ---
   // Initialize keyframes with deep cloned state
   const [keyframes, setKeyframes] = useState<Keyframe[]>([
-    { id: uuidv4(), duration: 500, pose: JSON.parse(JSON.stringify(INITIAL_POSE)), propTransforms: {} }
+    { id: uuidv4(), duration: 500, pose: JSON.parse(JSON.stringify(INITIAL_POSE)), propTransforms: {}, activeMuscles: [] }
   ]);
   const [currentFrameId, setCurrentFrameId] = useState<string>(keyframes[0].id);
   const [selectedBoneId, setSelectedBoneId] = useState<BodyPartType | null>(null);
@@ -527,7 +527,8 @@ const App: React.FC = () => {
       id: uuidv4(),
       duration: 500,
       pose: JSON.parse(JSON.stringify(currentFrame.pose)), 
-      propTransforms: JSON.parse(JSON.stringify(currentFrame.propTransforms))
+      propTransforms: JSON.parse(JSON.stringify(currentFrame.propTransforms)),
+      activeMuscles: [...(currentFrame.activeMuscles || [])]
     };
     setKeyframes([...keyframes, newFrame]);
     setCurrentFrameId(newFrame.id);
@@ -624,7 +625,7 @@ const App: React.FC = () => {
       }
 
       try {
-        await exportAnimation(exportFrames, props, attachments, exportMode, layoutMode, activeView, slotViews, action);
+        await exportAnimation(exportFrames, props, attachments, exportMode, layoutMode, activeView, slotViews, action, appearance.backgroundColor);
         if (action === 'clipboard') {
             alert("SVG copied to clipboard!");
         }
@@ -632,6 +633,18 @@ const App: React.FC = () => {
           console.error(e);
           if (action === 'clipboard') alert("Failed to copy to clipboard.");
       }
+  };
+
+  const handleToggleMuscle = (muscle: MuscleGroup) => {
+      const current = getCurrentFrame();
+      const active = current.activeMuscles || [];
+      const newActive = active.includes(muscle) 
+          ? active.filter(m => m !== muscle) 
+          : [...active, muscle];
+      
+      setKeyframes(keyframes.map(k => 
+          k.id === currentFrameId ? { ...k, activeMuscles: newActive } : k
+      ));
   };
 
   return (
@@ -672,6 +685,8 @@ const App: React.FC = () => {
             activeView={activeView}
             appearance={appearance}
             setAppearance={setAppearance}
+            activeMuscles={getCurrentFrame().activeMuscles || []}
+            onToggleMuscle={handleToggleMuscle}
         />
 
         <Canvas 
@@ -684,10 +699,11 @@ const App: React.FC = () => {
             dragState={dragState}
             isPlaying={isPlaying}
             armsInFront={armsInFront}
+            appearance={appearance}
+            activeMuscles={getCurrentFrame().activeMuscles || []}
             activeView={activeView}
             layoutMode={layoutMode}
             slotViews={slotViews}
-            appearance={appearance}
             onUpdateSlotView={(index, view) => {
                 const newSlots = [...slotViews];
                 newSlots[index] = view;

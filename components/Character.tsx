@@ -1,7 +1,7 @@
 
 import React from 'react';
-import { Bone, SkeletonState, BodyPartType, ViewType, Appearance } from '../types';
-import { SKELETON_DEF } from '../constants';
+import { Bone, SkeletonState, BodyPartType, ViewType, Appearance, MuscleGroup } from '../types';
+import { SKELETON_DEF, MUSCLE_OVERLAYS } from '../constants';
 import { getGlobalTransform } from '../utils';
 
 interface CharacterProps {
@@ -12,6 +12,7 @@ interface CharacterProps {
   view: ViewType;
   armsInFront?: boolean;
   appearance?: Appearance;
+  activeMuscles?: MuscleGroup[];
 }
 
 const Character: React.FC<CharacterProps> = ({ 
@@ -28,7 +29,8 @@ const Character: React.FC<CharacterProps> = ({
       skinColor: "#fca5a5",
       hairColor: "#111827",
       backgroundColor: "#111827"
-  }
+  },
+  activeMuscles = []
 }) => {
   
   // Helper to resolve color based on body part type
@@ -90,12 +92,31 @@ const Character: React.FC<CharacterProps> = ({
           
           const fillColor = getBoneColor(bone.id, bone.color);
 
-          // Determine Joint Color specifically
+          // Check for active muscles associated with this bone
+          const boneActiveMuscles = activeMuscles.filter(m => {
+              // Check if we have an overlay defined for this muscle on this bone
+              if (MUSCLE_OVERLAYS[m]?.[bone.id]) return true;
+              return false;
+          });
+
+          // Check for special Joint highlighting
+          const isShoulderActive = activeMuscles.includes(MuscleGroup.SHOULDERS) && bone.id.includes('UPPER_ARM');
+          const isGluteActive = activeMuscles.includes(MuscleGroup.GLUTES) && bone.id.includes('UPPER_LEG');
+          const isJointActive = isShoulderActive || isGluteActive;
+
+          // Determine Joint Color
           let jointColor = fillColor;
-          if (bone.id.includes('LOWER_ARM')) {
-              jointColor = appearance.shirtColor;
-          } else if (bone.id.includes('LOWER_LEG')) {
-              jointColor = appearance.pantsColor;
+          let jointClass = '';
+
+          if (isJointActive) {
+              jointColor = '#ef4444';
+              jointClass = 'animate-pulse-red';
+          } else {
+            if (bone.id.includes('LOWER_ARM')) {
+                jointColor = appearance.shirtColor;
+            } else if (bone.id.includes('LOWER_LEG')) {
+                jointColor = appearance.pantsColor;
+            }
           }
 
           return (
@@ -111,18 +132,34 @@ const Character: React.FC<CharacterProps> = ({
                 className="group"
                 style={{ cursor: isSelected ? 'grabbing' : 'grab' }}
               >
-                {/* Bone Path - Rendered first so joint covers the connection point if needed */}
+                {/* Base Bone Path */}
                 <path
                   d={viewDef.path}
                   fill={fillColor}
                   stroke={isSelected ? "#facc15" : "none"}
                   strokeWidth={isSelected ? 3 : 0}
-                  className="transition-colors duration-150 ease-in-out hover:fill-yellow-500/20 cursor-pointer pointer-events-auto"
+                  className={`transition-colors duration-150 ease-in-out hover:fill-yellow-500/20 cursor-pointer pointer-events-auto`}
                 />
+
+                {/* Muscle Overlays (Rendered on top of bone path) */}
+                {boneActiveMuscles.map(muscle => {
+                    const overlayPath = MUSCLE_OVERLAYS[muscle]?.[bone.id]?.[view];
+                    if (overlayPath) {
+                        return (
+                            <path 
+                                key={muscle}
+                                d={overlayPath} 
+                                fill="#ef4444" 
+                                className="animate-pulse-red pointer-events-none"
+                            />
+                        );
+                    }
+                    return null;
+                })}
 
                 {/* Joint Circle - Rendered on top */}
                 {showJoint && (
-                     <circle cx="0" cy="0" r={effectiveRadius} fill={jointColor} className="pointer-events-none" />
+                     <circle cx="0" cy="0" r={effectiveRadius} fill={jointColor} className={`pointer-events-none ${jointClass}`} />
                 )}
 
                 {/* Face Details & Hair */}

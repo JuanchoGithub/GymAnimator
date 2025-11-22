@@ -19,6 +19,19 @@ export enum BodyPartType {
   FOOT_R = 'FOOT_R',
 }
 
+export enum MuscleGroup {
+  CHEST = 'CHEST',
+  BACK = 'BACK',
+  SHOULDERS = 'SHOULDERS',
+  BICEPS = 'BICEPS',
+  TRICEPS = 'TRICEPS',
+  ABS = 'ABS',
+  GLUTES = 'GLUTES',
+  QUADS = 'QUADS',
+  HAMSTRINGS = 'HAMSTRINGS',
+  CALVES = 'CALVES'
+}
+
 export type ViewType = 'FRONT' | 'SIDE' | 'TOP';
 export type LayoutMode = 'SINGLE' | 'SIDE_BY_SIDE' | 'TOP_BOTTOM' | 'THREE_SPLIT';
 export type PlaybackMode = 'LOOP' | 'PING_PONG';
@@ -62,6 +75,7 @@ export interface Keyframe {
   pose: SkeletonState;
   // Prop ID -> View -> Transform
   propTransforms: Record<string, Record<ViewType, PropViewTransform>>;
+  activeMuscles: MuscleGroup[];
 }
 
 export interface SnapPoint {

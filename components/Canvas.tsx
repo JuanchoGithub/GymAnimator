@@ -1,7 +1,7 @@
 
 import React from 'react';
 import Character from './Character';
-import { GymProp, SkeletonState, BodyPartType, ViewType, LayoutMode, Appearance } from '../types';
+import { GymProp, SkeletonState, BodyPartType, ViewType, LayoutMode, Appearance, MuscleGroup } from '../types';
 import { getSnapPointDef } from '../utils';
 import { getSmartPath } from '../constants';
 
@@ -19,6 +19,7 @@ interface CanvasProps {
     isPlaying: boolean;
     armsInFront: boolean;
     appearance: Appearance;
+    activeMuscles: MuscleGroup[];
     onBoneMouseDown: (id: BodyPartType, e: React.MouseEvent, view: ViewType) => void;
     onPropMouseDown: (e: React.MouseEvent, prop: GymProp, view: ViewType) => void;
     onSvgMouseMove: (e: React.MouseEvent, view: ViewType) => void;
@@ -41,6 +42,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     isPlaying,
     armsInFront,
     appearance,
+    activeMuscles,
     onBoneMouseDown,
     onPropMouseDown,
     onSvgMouseMove,
@@ -203,6 +205,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                     view={view}
                     armsInFront={armsInFront}
                     appearance={appearance}
+                    activeMuscles={activeMuscles}
                 />
 
                  {/* Render Props (Front) */}

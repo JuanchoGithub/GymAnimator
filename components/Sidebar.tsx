@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { BodyPartType, GymProp, SkeletonState, PropViewTransform, Appearance, ViewType } from '../types';
+import { BodyPartType, GymProp, SkeletonState, PropViewTransform, Appearance, ViewType, MuscleGroup } from '../types';
 import { SKELETON_DEF, SAMPLE_PROPS, MIRROR_MAPPING, getCablePath } from '../constants';
 import { synchronizePropViews } from '../utils';
 
@@ -27,6 +27,8 @@ interface SidebarProps {
   activeView?: ViewType;
   appearance: Appearance;
   setAppearance: React.Dispatch<React.SetStateAction<Appearance>>;
+  activeMuscles?: MuscleGroup[];
+  onToggleMuscle?: (muscle: MuscleGroup) => void;
 }
 
 const CollapsibleSection: React.FC<{ title: string; children: React.ReactNode; defaultOpen?: boolean }> = ({ title, children, defaultOpen = true }) => {
@@ -114,7 +116,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setArmsInFront,
   activeView = 'FRONT',
   appearance,
-  setAppearance
+  setAppearance,
+  activeMuscles = [],
+  onToggleMuscle = () => {}
 }) => {
   const activeBoneDef = SKELETON_DEF.find(b => b.id === selectedBoneId);
   const activeProp = props.find(p => p.id === selectedPropId);
@@ -172,6 +176,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <div className="w-64 bg-gray-800 border-r border-gray-700 p-2 flex flex-col gap-2 overflow-y-auto scrollbar-thin">
         
+        {/* MUSCLE ACTIVATION */}
+        <CollapsibleSection title="Muscle Activation" defaultOpen={false}>
+            <div className="grid grid-cols-2 gap-2">
+                {Object.values(MuscleGroup).map(muscle => (
+                    <label key={muscle} className="flex items-center space-x-2 cursor-pointer bg-gray-800 p-1 rounded hover:bg-gray-700 transition-colors border border-transparent hover:border-gray-600">
+                        <input 
+                            type="checkbox" 
+                            checked={activeMuscles.includes(muscle)}
+                            onChange={() => onToggleMuscle(muscle)}
+                            className="w-3.5 h-3.5 rounded text-red-500 focus:ring-0 bg-gray-900 border-gray-600"
+                        />
+                        <span className="text-[10px] text-gray-300 font-medium">{muscle}</span>
+                    </label>
+                ))}
+            </div>
+            <div className="mt-2 text-[9px] text-gray-500 italic">
+                Select muscles to pulse red for the current frame. Note: Anatomically adjacent muscles may share body segments.
+            </div>
+        </CollapsibleSection>
+
         {/* APPEARANCE */}
         <CollapsibleSection title="Character & Scene">
             <div className="space-y-2">

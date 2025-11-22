@@ -278,7 +278,8 @@ export const exportAnimation = async (
     layoutMode: LayoutMode,
     activeView: ViewType,
     slotViews: ViewType[] = ['FRONT', 'SIDE', 'TOP'],
-    action: 'download' | 'clipboard' = 'download'
+    action: 'download' | 'clipboard' = 'download',
+    backgroundColor: string = '#f3f4f6'
 ) => {
     // 1. Determine Views to Export based on Layout
     let viewsToExport: { view: ViewType, x: number, y: number, w: number, h: number, ox: number, oy: number, scale: number }[] = [];
@@ -361,7 +362,6 @@ export const exportAnimation = async (
                 node.removeAttribute('onmouseup');
             });
             
-            svgContentInner += `<rect x="${v.x}" y="${v.y}" width="${v.w}" height="${v.h}" fill="#f3f4f6" stroke="#e5e7eb" stroke-width="2"/>\n`;
             svgContentInner += `<g transform="translate(${v.x + v.ox}, ${v.y + v.oy}) scale(${v.scale})">\n`;
             
             Array.from(svg.children).forEach(child => {
@@ -554,10 +554,11 @@ export const exportAnimation = async (
     });
 
     const svgOutput = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" style="background:#222">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}">
   <style>
     ${css}
   </style>
+  ${backgroundColor !== 'transparent' ? `<rect width="100%" height="100%" fill="${backgroundColor}"/>` : ''}
   ${svgContentInner}
 </svg>
     `;

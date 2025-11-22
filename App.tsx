@@ -26,6 +26,7 @@ const App: React.FC = () => {
   const [props, setProps] = useState<GymProp[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('LOOP');
+  const [playbackMuscles, setPlaybackMuscles] = useState<MuscleGroup[]>([]);
 
   const [currentPose, setCurrentPose] = useState<SkeletonState>(JSON.parse(JSON.stringify(INITIAL_POSE)));
   // No longer using propPrompt or isGenerating
@@ -108,6 +109,9 @@ const App: React.FC = () => {
       
       const currentKeyframe = keyframes[currentKeyframeIndex];
       
+      // Sync active muscles for playback
+      setPlaybackMuscles(currentKeyframe.activeMuscles || []);
+
       // Determine next index based on mode
       let nextIndex = 0;
       if (playbackMode === 'LOOP') {
@@ -685,7 +689,7 @@ const App: React.FC = () => {
             activeView={activeView}
             appearance={appearance}
             setAppearance={setAppearance}
-            activeMuscles={getCurrentFrame().activeMuscles || []}
+            activeMuscles={isPlaying ? playbackMuscles : (getCurrentFrame().activeMuscles || [])}
             onToggleMuscle={handleToggleMuscle}
         />
 
@@ -700,7 +704,7 @@ const App: React.FC = () => {
             isPlaying={isPlaying}
             armsInFront={armsInFront}
             appearance={appearance}
-            activeMuscles={getCurrentFrame().activeMuscles || []}
+            activeMuscles={isPlaying ? playbackMuscles : (getCurrentFrame().activeMuscles || [])}
             activeView={activeView}
             layoutMode={layoutMode}
             slotViews={slotViews}

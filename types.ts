@@ -112,6 +112,7 @@ export interface GymProp {
   cableConfig?: {
     isCable: boolean;
     showLine: boolean;
+    isAngled?: boolean;
     handleType: 'BAR' | 'V_BAR' | 'ROPE';
   };
 }

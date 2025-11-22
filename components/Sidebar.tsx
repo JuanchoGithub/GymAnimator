@@ -144,20 +144,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   // Helper to update prop cable config
-  const updateCableConfig = (propId: string, showLine: boolean) => {
+  const updateCableProp = (propId: string, changes: Partial<NonNullable<GymProp['cableConfig']>>) => {
       const updatedProps = props.map(p => {
           if (p.id !== propId || !p.cableConfig) return p;
           
-          const newPath = getCablePath(p.cableConfig.handleType, showLine);
+          const newConfig = { ...p.cableConfig, ...changes };
           
           const newViews = { ...p.views };
-          (['FRONT', 'SIDE', 'TOP'] as ViewType[]).forEach(v => {
-              newViews[v] = { ...newViews[v], path: newPath };
-          });
+          
+          // FRONT: Always Vertical
+          newViews.FRONT = { ...newViews.FRONT, path: getCablePath(newConfig.handleType, newConfig.showLine, false) };
+          
+          // SIDE: Angled if requested
+          newViews.SIDE = { ...newViews.SIDE, path: getCablePath(newConfig.handleType, newConfig.showLine, newConfig.isAngled) };
+          
+          // TOP: Always Vertical (simplified representation)
+          newViews.TOP = { ...newViews.TOP, path: getCablePath(newConfig.handleType, newConfig.showLine, false) };
 
           return {
               ...p,
-              cableConfig: { ...p.cableConfig, showLine },
+              cableConfig: newConfig,
               views: newViews
           };
       });
@@ -384,10 +390,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                  <input 
                                     type="checkbox" 
                                     checked={activeProp.cableConfig.showLine}
-                                    onChange={(e) => updateCableConfig(activeProp.id, e.target.checked)}
+                                    onChange={(e) => updateCableProp(activeProp.id, { showLine: e.target.checked })}
                                     className="w-3 h-3 rounded text-blue-500 focus:ring-0 bg-gray-700 border-gray-600"
                                  />
                                  <span className="text-xs text-gray-300">Show Line</span>
+                             </label>
+                             <label className="flex items-center space-x-2 cursor-pointer">
+                                 <input 
+                                    type="checkbox" 
+                                    checked={activeProp.cableConfig.isAngled || false}
+                                    onChange={(e) => updateCableProp(activeProp.id, { isAngled: e.target.checked })}
+                                    className="w-3 h-3 rounded text-blue-500 focus:ring-0 bg-gray-700 border-gray-600"
+                                 />
+                                 <span className="text-xs text-gray-300">45° Angle (Side)</span>
                              </label>
                              <button 
                                 onClick={() => toggleCableDirection(activeProp)}

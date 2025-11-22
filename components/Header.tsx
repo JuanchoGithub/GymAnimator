@@ -10,8 +10,6 @@ interface HeaderProps {
   setActiveView: (mode: ViewType) => void;
   layoutMode: LayoutMode;
   setLayoutMode: (mode: LayoutMode) => void;
-  exerciseName: string;
-  setExerciseName: (val: string) => void;
 }
 
 type ExportMode = 'accurate' | 'interpolated' | 'adaptive';
@@ -29,20 +27,20 @@ export const Header: React.FC<HeaderProps> = ({
   activeView,
   setActiveView,
   layoutMode,
-  setLayoutMode,
-  exerciseName,
-  setExerciseName
+  setLayoutMode
 }) => {
   const [selectedMode, setSelectedMode] = useState<ExportMode>('adaptive');
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
+  
   const activeModeDef = EXPORT_MODES.find(m => m.id === selectedMode)!;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as Node)) {
+        setIsExportOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -69,31 +67,19 @@ export const Header: React.FC<HeaderProps> = ({
 
   const handleModeSelect = (mode: ExportMode) => {
       setSelectedMode(mode);
-      setIsDropdownOpen(false);
+      setIsExportOpen(false);
   };
 
   return (
-    <header className="h-14 bg-gray-800 border-b border-gray-700 flex items-center px-4 justify-between flex-shrink-0 relative z-50">
-      <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
+    <header className="h-14 bg-gray-800 border-b border-gray-700 flex items-center px-4 justify-between flex-shrink-0 relative z-40">
+      <div className="flex items-center space-x-4 min-w-0">
+          <div className="flex items-center space-x-2 flex-shrink-0">
             <span className="material-icons-round text-yellow-500">fitness_center</span>
-            <h1 className="text-lg font-bold tracking-wide hidden md:block">GymAnimator</h1>
-          </div>
-
-          {/* Exercise Name Input */}
-          <div className="flex items-center bg-gray-900 rounded border border-gray-600 px-2 py-1">
-              <span className="text-gray-500 material-icons-round text-sm mr-1">edit</span>
-              <input 
-                type="text" 
-                value={exerciseName}
-                onChange={(e) => setExerciseName(e.target.value)}
-                placeholder="Exercise Name"
-                className="bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none w-32 sm:w-48"
-              />
+            <h1 className="text-lg font-bold tracking-wide hidden md:block truncate">GymAnimator</h1>
           </div>
       </div>
       
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
           {/* Layout Toggle */}
           <div className="flex bg-gray-900 rounded border border-gray-700 p-1 space-x-1 hidden sm:flex">
              <button 
@@ -126,7 +112,7 @@ export const Header: React.FC<HeaderProps> = ({
              </button>
           </div>
 
-           <label className="flex items-center space-x-2 text-sm cursor-pointer select-none bg-gray-900 px-3 py-1.5 rounded border border-gray-700 hover:border-gray-600 transition-colors hidden md:flex">
+           <label className="flex items-center space-x-2 text-sm cursor-pointer select-none bg-gray-900 px-2 sm:px-3 py-1.5 rounded border border-gray-700 hover:border-gray-600 transition-colors hidden md:flex">
               <input 
                   type="checkbox" 
                   checked={isMirrorMode} 
@@ -136,10 +122,10 @@ export const Header: React.FC<HeaderProps> = ({
               <span className={isMirrorMode ? "text-yellow-400 font-semibold" : "text-gray-400"}>Mirror</span>
           </label>
 
-          <div className="h-6 w-px bg-gray-700 mx-1"></div>
+          <div className="h-6 w-px bg-gray-700 mx-1 hidden sm:block"></div>
 
           {/* Export Group */}
-          <div className="flex items-center space-x-2" ref={dropdownRef}>
+          <div className="flex items-center space-x-2" ref={exportDropdownRef}>
               {/* Copy Button */}
               <button
                 onClick={handleCopy}
@@ -153,21 +139,21 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="relative flex items-center rounded shadow-lg">
                   <button 
                       onClick={handleDownload}
-                      className={`px-3 py-2 flex items-center rounded-l text-white font-semibold text-xs sm:text-sm transition-colors border-r border-black/10 ${activeModeDef.color}`}
+                      className={`px-2 sm:px-3 py-2 flex items-center rounded-l text-white font-semibold text-xs sm:text-sm transition-colors border-r border-black/10 ${activeModeDef.color} whitespace-nowrap`}
                   >
                       <span className="material-icons-round text-sm mr-2">{activeModeDef.icon}</span> 
-                      <span className="hidden sm:inline">Download {activeModeDef.label}</span>
-                      <span className="sm:hidden">Download</span>
+                      <span className="hidden lg:inline">Export {activeModeDef.label}</span>
+                      <span className="lg:hidden">Export</span>
                   </button>
                   <button 
-                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                      onClick={() => setIsExportOpen(!isExportOpen)}
                       className="px-1.5 py-2 flex items-center rounded-r bg-yellow-500 hover:bg-yellow-400 text-gray-900 transition-colors"
                       title="Select Export Mode"
                   >
                       <span className="material-icons-round text-sm">arrow_drop_down</span>
                   </button>
 
-                  {isDropdownOpen && (
+                  {isExportOpen && (
                       <div className="absolute top-full right-0 mt-1 w-48 bg-gray-800 rounded-lg shadow-xl border border-gray-700 overflow-hidden z-50">
                           {EXPORT_MODES.map((mode) => (
                               <button
@@ -187,7 +173,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Notification Toast */}
       {toastMessage && (
-          <div className="absolute top-16 right-4 bg-gray-800 text-white px-4 py-2 rounded shadow-lg border border-green-500 flex items-center animate-bounce">
+          <div className="absolute top-16 right-4 bg-gray-800 text-white px-4 py-2 rounded shadow-lg border border-green-500 flex items-center animate-bounce z-[100]">
               <span className="material-icons-round text-green-400 mr-2">check_circle</span>
               <span className="text-sm font-semibold">{toastMessage}</span>
           </div>

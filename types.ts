@@ -124,3 +124,17 @@ export interface Appearance {
     hairColor: string;
     backgroundColor: string;
 }
+
+export interface ExerciseData {
+    id: string;
+    name: string;
+    lastModified: number;
+    data: {
+        keyframes: Keyframe[];
+        props: GymProp[];
+        attachments: Record<string, { propId: string, snapPointId: string, rotationOffset: number }>;
+        appearance: Appearance;
+        defaultDuration: number;
+        playbackMode: PlaybackMode;
+    }
+}

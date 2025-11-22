@@ -146,7 +146,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       return (
         <div 
             id={`viewport-${view}`}
-            className={`relative overflow-hidden border-4 transition-colors w-full h-full min-h-0 min-w-0 ${isActive ? 'border-blue-500 shadow-lg z-10' : 'border-gray-700 opacity-90 hover:opacity-100'}`}
+            className={`relative overflow-hidden border-4 transition-colors w-full h-full min-h-0 min-w-0 flex flex-col ${isActive ? 'border-blue-500 shadow-lg z-10' : 'border-gray-700 opacity-90 hover:opacity-100'}`}
             onMouseDown={() => onSetActiveView(view)}
             style={{ backgroundColor: appearance.backgroundColor === 'transparent' ? 'transparent' : appearance.backgroundColor }}
         >
@@ -223,24 +223,24 @@ export const Canvas: React.FC<CanvasProps> = ({
           case 'SIDE_BY_SIDE':
               return (
                   <div className="grid grid-cols-2 gap-1 w-full h-full min-h-0">
-                        {renderViewport(slotViews[0], slotViews[0], 0, true)}
-                        {renderViewport(slotViews[1], slotViews[1], 1, true)}
+                        <div className="min-w-0 min-h-0 h-full">{renderViewport(slotViews[0], slotViews[0], 0, true)}</div>
+                        <div className="min-w-0 min-h-0 h-full">{renderViewport(slotViews[1], slotViews[1], 1, true)}</div>
                   </div>
               );
           case 'TOP_BOTTOM':
              return (
                   <div className="grid grid-rows-2 gap-1 w-full h-full min-h-0">
-                        {renderViewport(slotViews[0], slotViews[0], 0, true)}
-                        {renderViewport(slotViews[2], slotViews[2], 2, true)}
+                        <div className="min-w-0 min-h-0 h-full">{renderViewport(slotViews[0], slotViews[0], 0, true)}</div>
+                        <div className="min-w-0 min-h-0 h-full">{renderViewport(slotViews[2], slotViews[2], 2, true)}</div>
                   </div>
               );
           case 'THREE_SPLIT':
               return (
                   <div className="grid grid-cols-2 gap-1 w-full h-full min-h-0">
-                      {renderViewport(slotViews[0], slotViews[0], 0, true)}
+                      <div className="min-w-0 min-h-0 h-full">{renderViewport(slotViews[0], slotViews[0], 0, true)}</div>
                       <div className="grid grid-rows-2 gap-1 h-full min-h-0">
-                          {renderViewport(slotViews[1], slotViews[1], 1, true)}
-                          {renderViewport(slotViews[2], slotViews[2], 2, true)}
+                          <div className="min-w-0 min-h-0 h-full">{renderViewport(slotViews[1], slotViews[1], 1, true)}</div>
+                          <div className="min-w-0 min-h-0 h-full">{renderViewport(slotViews[2], slotViews[2], 2, true)}</div>
                       </div>
                   </div>
               );
@@ -250,8 +250,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   return (
-    <div className="flex-1 bg-gray-900 p-4 relative flex items-center justify-center overflow-hidden">
-       <div className="w-full h-full flex flex-col">
+    <div className="w-full h-full bg-gray-900 p-4 relative flex items-center justify-center overflow-hidden">
+       <div className="w-full h-full flex flex-col min-h-0">
             {getGridContent()}
        </div>
        

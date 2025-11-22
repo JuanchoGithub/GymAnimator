@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { BodyPartType, GymProp, SkeletonState, PropViewTransform, Appearance, ViewType, MuscleGroup } from '../types';
+import { BodyPartType, GymProp, SkeletonState, PropViewTransform, Appearance, ViewType, MuscleGroup, ExerciseData } from '../types';
 import { SKELETON_DEF, SAMPLE_PROPS, MIRROR_MAPPING, getCablePath } from '../constants';
 import { synchronizePropViews } from '../utils';
 
@@ -29,6 +29,15 @@ interface SidebarProps {
   setAppearance: React.Dispatch<React.SetStateAction<Appearance>>;
   activeMuscles?: MuscleGroup[];
   onToggleMuscle?: (muscle: MuscleGroup) => void;
+  
+  // Exercise Management
+  exerciseName: string;
+  setExerciseName: (val: string) => void;
+  onNew: () => void;
+  onSave: () => void;
+  onLoad: (id: string) => void;
+  onDeleteExercise: (id: string) => void;
+  savedExercises: ExerciseData[];
 }
 
 const CollapsibleSection: React.FC<{ title: string; children: React.ReactNode; defaultOpen?: boolean }> = ({ title, children, defaultOpen = true }) => {
@@ -118,7 +127,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   appearance,
   setAppearance,
   activeMuscles = [],
-  onToggleMuscle = () => {}
+  onToggleMuscle = () => {},
+  exerciseName,
+  setExerciseName,
+  onNew,
+  onSave,
+  onLoad,
+  onDeleteExercise,
+  savedExercises
 }) => {
   const activeBoneDef = SKELETON_DEF.find(b => b.id === selectedBoneId);
   const activeProp = props.find(p => p.id === selectedPropId);
@@ -174,8 +190,69 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const rootBones = SKELETON_DEF.filter(b => b.parentId === null);
 
   return (
-    <div className="w-64 bg-gray-800 border-r border-gray-700 p-2 flex flex-col gap-2 overflow-y-auto scrollbar-thin">
+    <div className="w-64 bg-gray-800 border-r border-gray-700 p-2 flex flex-col gap-2 overflow-y-auto scrollbar-thin flex-shrink-0 h-full z-50">
         
+        {/* PROJECT MANAGEMENT */}
+        <CollapsibleSection title="Project">
+             <div className="space-y-3">
+                <div className="flex space-x-1">
+                    <button 
+                        onClick={onNew}
+                        className="px-3 py-1 rounded bg-green-600 hover:bg-green-500 text-white transition-colors font-bold text-xs"
+                        title="Create New Exercise"
+                    >
+                        NEW
+                    </button>
+                    <input 
+                        type="text" 
+                        value={exerciseName}
+                        onChange={(e) => setExerciseName(e.target.value)}
+                        placeholder="Exercise Name"
+                        className="flex-1 bg-gray-800 text-xs text-white placeholder-gray-500 border border-gray-600 rounded px-2 py-1 focus:outline-none focus:border-blue-500 min-w-0"
+                    />
+                    <button 
+                        onClick={onSave}
+                        className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors font-bold text-xs"
+                        title="Save Exercise"
+                    >
+                        SAVE
+                    </button>
+                </div>
+
+                <div className="bg-gray-800 rounded border border-gray-700 overflow-hidden">
+                    <div className="px-2 py-1 bg-gray-900 border-b border-gray-700 text-[10px] font-bold text-gray-400 uppercase">
+                        Saved Exercises ({savedExercises.length})
+                    </div>
+                    <ul className="max-h-40 overflow-y-auto scrollbar-thin">
+                        {savedExercises.length === 0 ? (
+                            <li className="p-2 text-center text-gray-500 text-[10px] italic">
+                                No exercises saved
+                            </li>
+                        ) : (
+                            savedExercises.map(ex => (
+                                <li key={ex.id} className="border-b border-gray-700 last:border-0 hover:bg-gray-750 group flex items-center justify-between p-1.5">
+                                    <span 
+                                        className="text-xs font-medium text-gray-300 truncate cursor-pointer flex-1 hover:text-blue-400 transition-colors"
+                                        onClick={() => onLoad(ex.id)}
+                                        title={`Load ${ex.name}`}
+                                    >
+                                        {ex.name}
+                                    </span>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); onDeleteExercise(ex.id); }}
+                                        className="p-0.5 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="Delete"
+                                    >
+                                        <span className="material-icons-round text-[12px]">close</span>
+                                    </button>
+                                </li>
+                            ))
+                        )}
+                    </ul>
+                </div>
+             </div>
+        </CollapsibleSection>
+
         {/* MUSCLE ACTIVATION */}
         <CollapsibleSection title="Muscle Activation" defaultOpen={false}>
             <div className="grid grid-cols-2 gap-2">
@@ -192,7 +269,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 ))}
             </div>
             <div className="mt-2 text-[9px] text-gray-500 italic">
-                Select muscles to pulse red for the current frame. Note: Anatomically adjacent muscles may share body segments.
+                Select muscles to pulse red for the current frame.
             </div>
         </CollapsibleSection>
 
@@ -518,7 +595,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </CollapsibleSection>
 
         {/* PROPS LIBRARY */}
-        <CollapsibleSection title="Library" defaultOpen={false}>
+        <CollapsibleSection title="Prop Library" defaultOpen={false}>
             <div className="flex flex-wrap gap-2">
                 {SAMPLE_PROPS.map(p => (
                     <button 

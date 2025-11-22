@@ -5,18 +5,20 @@ import Timeline from './components/Timeline';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { Canvas } from './components/Canvas';
-import { BodyPartType, Keyframe, SkeletonState, GymProp, PropViewTransform, ViewType, LayoutMode, Appearance, PlaybackMode, MuscleGroup } from './types';
-import { INITIAL_POSE, SAMPLE_PROPS, SKELETON_DEF, MIRROR_MAPPING, IK_CHAINS } from './constants';
+import { BodyPartType, Keyframe, SkeletonState, GymProp, PropViewTransform, ViewType, LayoutMode, Appearance, PlaybackMode, MuscleGroup, ExerciseData } from './types';
+import { INITIAL_POSE, SKELETON_DEF, MIRROR_MAPPING, IK_CHAINS } from './constants';
 import { getGlobalTransform, solveTwoBoneIK, toDegrees, normalizeAngle, transformPoint, syncDumbbells, exportAnimation, Point, getSnapPointDef, synchronizePropViews } from './utils';
 
 const SNAP_THRESHOLD = 20;
 const UNSNAP_THRESHOLD = 50;
 const VIEWS: ViewType[] = ['FRONT', 'SIDE', 'TOP'];
+const STORAGE_KEY = 'gym_animator_exercises';
 
 const App: React.FC = () => {
   // --- State ---
   const [defaultDuration, setDefaultDuration] = useState<number>(500);
   const [exerciseName, setExerciseName] = useState("My Exercise");
+  const [currentExerciseId, setCurrentExerciseId] = useState<string | null>(null);
   
   // Initialize keyframes with deep cloned state
   const [keyframes, setKeyframes] = useState<Keyframe[]>([
@@ -32,10 +34,9 @@ const App: React.FC = () => {
   const [playbackMuscles, setPlaybackMuscles] = useState<MuscleGroup[]>([]);
 
   const [currentPose, setCurrentPose] = useState<SkeletonState>(JSON.parse(JSON.stringify(INITIAL_POSE)));
-  // No longer using propPrompt or isGenerating
   const [isMirrorMode, setIsMirrorMode] = useState(false);
   const [isTimelineExpanded, setIsTimelineExpanded] = useState(true);
-  // exportMode state removed from here as it is now managed by Header selection
+  
   const [activeView, setActiveView] = useState<ViewType>('FRONT');
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('SINGLE');
   const [slotViews, setSlotViews] = useState<ViewType[]>(['FRONT', 'SIDE', 'TOP']);
@@ -51,6 +52,8 @@ const App: React.FC = () => {
       hairColor: "#111827",
       backgroundColor: "#111827"
   });
+
+  const [savedExercises, setSavedExercises] = useState<ExerciseData[]>([]);
 
   // Dragging State
   const [dragState, setDragState] = useState<{
@@ -83,6 +86,21 @@ const App: React.FC = () => {
   };
 
   // --- Effects ---
+  useEffect(() => {
+    // Load exercises from local storage on mount
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+            setSavedExercises(parsed);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load exercises", e);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isPlaying) {
       const frame = getCurrentFrame();
@@ -224,6 +242,120 @@ const App: React.FC = () => {
 
 
   // --- Handlers ---
+
+  const handleNewExercise = () => {
+      const newId = uuidv4();
+      const initialPose = JSON.parse(JSON.stringify(INITIAL_POSE));
+      
+      const newFrame: Keyframe = {
+          id: uuidv4(),
+          duration: 500,
+          pose: initialPose,
+          propTransforms: {},
+          activeMuscles: []
+      };
+
+      const newExercise: ExerciseData = {
+          id: newId,
+          name: "New Exercise",
+          lastModified: Date.now(),
+          data: {
+              keyframes: [newFrame],
+              props: [],
+              attachments: {},
+              appearance: {
+                  shirtColor: "#3b82f6",
+                  pantsColor: "#1f2937",
+                  shoesColor: "#ffffff",
+                  skinColor: "#fca5a5",
+                  hairColor: "#111827",
+                  backgroundColor: "#111827"
+              },
+              defaultDuration: 500,
+              playbackMode: 'LOOP'
+          }
+      };
+
+      const updatedList = [...savedExercises, newExercise];
+      setSavedExercises(updatedList);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedList));
+      
+      setCurrentExerciseId(newId);
+      setExerciseName("New Exercise");
+      setKeyframes([newFrame]);
+      setCurrentFrameId(newFrame.id);
+      setProps([]);
+      setAttachments({});
+      setAppearance(newExercise.data.appearance);
+      setDefaultDuration(500);
+      setPlaybackMode('LOOP');
+      setSelectedBoneId(null);
+      setSelectedPropId(null);
+      setIsPlaying(false);
+  };
+
+  // Save/Load Handlers
+  const handleSaveExercise = () => {
+    const newExercise: ExerciseData = {
+        id: currentExerciseId || uuidv4(),
+        name: exerciseName,
+        lastModified: Date.now(),
+        data: {
+            keyframes,
+            props,
+            attachments,
+            appearance,
+            defaultDuration,
+            playbackMode
+        }
+    };
+
+    // Check if exists
+    const existingIndex = savedExercises.findIndex(e => e.id === newExercise.id);
+    let updatedList = [...savedExercises];
+    
+    if (existingIndex >= 0) {
+        updatedList[existingIndex] = newExercise;
+    } else {
+        updatedList.push(newExercise);
+    }
+
+    setSavedExercises(updatedList);
+    setCurrentExerciseId(newExercise.id);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedList));
+  };
+
+  const handleLoadExercise = (id: string) => {
+      const exercise = savedExercises.find(e => e.id === id);
+      if (!exercise) return;
+
+      if (isPlaying) setIsPlaying(false);
+
+      setExerciseName(exercise.name);
+      setCurrentExerciseId(exercise.id);
+      setKeyframes(exercise.data.keyframes);
+      setProps(exercise.data.props);
+      setAttachments(exercise.data.attachments);
+      setAppearance(exercise.data.appearance);
+      setDefaultDuration(exercise.data.defaultDuration);
+      setPlaybackMode(exercise.data.playbackMode || 'LOOP');
+      
+      // Reset selection state
+      setCurrentFrameId(exercise.data.keyframes[0].id);
+      setSelectedBoneId(null);
+      setSelectedPropId(null);
+  };
+
+  const handleDeleteExercise = (id: string) => {
+      const updatedList = savedExercises.filter(e => e.id !== id);
+      setSavedExercises(updatedList);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedList));
+      
+      if (currentExerciseId === id) {
+          setCurrentExerciseId(null);
+      }
+  };
+
 
   const handleBoneMouseDown = (id: BodyPartType, e: React.MouseEvent, view: ViewType) => {
     if (isPlaying) return;
@@ -671,106 +803,121 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-gray-900 text-gray-100 overflow-hidden">
-      <Header 
-        isMirrorMode={isMirrorMode}
-        setIsMirrorMode={setIsMirrorMode}
-        onExport={handleExport}
-        activeView={activeView}
-        setActiveView={setActiveView}
-        layoutMode={layoutMode}
-        setLayoutMode={setLayoutMode}
-        exerciseName={exerciseName}
-        setExerciseName={setExerciseName}
-      />
-
-      <div className="flex-1 flex overflow-hidden">
-        <Sidebar 
-            selectedBoneId={selectedBoneId}
-            selectedPropId={selectedPropId}
-            currentPose={currentPose}
-            props={props}
-            setProps={handlePropUpdate} 
-            attachments={attachments}
-            onRotationChange={handleRotationChange}
-            onDetachBone={handleDetachBone}
-            onDeleteProp={handleDeleteProp}
-            onAddPresetProp={handleAddPresetProp}
-            onGenerateProp={() => {}} // Removed
-            isGenerating={false}
-            propPrompt={""}
-            setPropPrompt={() => {}}
+    <div className="h-screen w-screen flex flex-col overflow-hidden bg-gray-900 text-gray-100">
+       {/* 1. Header at the very top, full width */}
+       <Header 
             isMirrorMode={isMirrorMode}
-            onSelectProp={handleSelectProp}
-            onSelectBone={(id, e) => handleBoneMouseDown(id, e, activeView)}
-            armsInFront={armsInFront}
-            setArmsInFront={setArmsInFront}
+            setIsMirrorMode={setIsMirrorMode}
+            onExport={handleExport}
             activeView={activeView}
-            appearance={appearance}
-            setAppearance={setAppearance}
-            activeMuscles={isPlaying ? playbackMuscles : (getCurrentFrame().activeMuscles || [])}
-            onToggleMuscle={handleToggleMuscle}
-        />
-
-        <Canvas 
-            svgRef={svgRef}
-            currentPose={currentPose}
-            props={props}
-            selectedBoneId={selectedBoneId}
-            selectedPropId={selectedPropId}
-            attachments={attachments}
-            dragState={dragState}
-            isPlaying={isPlaying}
-            armsInFront={armsInFront}
-            appearance={appearance}
-            activeMuscles={isPlaying ? playbackMuscles : (getCurrentFrame().activeMuscles || [])}
-            activeView={activeView}
+            setActiveView={setActiveView}
             layoutMode={layoutMode}
-            slotViews={slotViews}
-            onUpdateSlotView={(index, view) => {
-                if (index === -1) {
-                     setActiveView(view);
-                } else {
-                    const newSlots = [...slotViews];
-                    newSlots[index] = view;
-                    setSlotViews(newSlots);
-                    setActiveView(view);
-                }
-            }}
-            onBoneMouseDown={handleBoneMouseDown}
-            onPropMouseDown={handlePropMouseDown}
-            onSvgMouseMove={handleSvgMouseMove}
-            onSvgMouseUp={handleSvgMouseUp}
-            onClearSelection={() => {
-                setSelectedBoneId(null);
-                setSelectedPropId(null);
-            }}
-            onSetActiveView={setActiveView}
+            setLayoutMode={setLayoutMode}
         />
-      </div>
 
-      <div className={`flex-shrink-0 transition-[height] duration-300 ease-in-out ${isTimelineExpanded ? 'h-48' : 'h-12'}`}>
-        <Timeline 
-            keyframes={keyframes}
-            currentFrameId={currentFrameId}
-            onSelectFrame={(id) => {
-                setCurrentFrameId(id);
-                setIsPlaying(false);
-            }}
-            onAddFrame={handleAddFrame}
-            onDeleteFrame={handleDeleteFrame}
-            onDurationChange={handleDurationChange}
-            isPlaying={isPlaying}
-            onPlayPause={() => setIsPlaying(!isPlaying)}
-            isExpanded={isTimelineExpanded}
-            onToggleExpand={() => setIsTimelineExpanded(!isTimelineExpanded)}
-            playbackMode={playbackMode}
-            setPlaybackMode={setPlaybackMode}
-            defaultDuration={defaultDuration}
-            onDefaultDurationChange={handleDefaultDurationChange}
-            onApplyDefaultToAll={handleForceDefaultDuration}
-        />
-      </div>
+       {/* 2. Main Content Area: Sidebar (Full Height) + Main View (Canvas + Timeline) */}
+       <div className="flex-1 flex overflow-hidden">
+            {/* Sidebar on the left */}
+            <Sidebar 
+                selectedBoneId={selectedBoneId}
+                selectedPropId={selectedPropId}
+                currentPose={currentPose}
+                props={props}
+                setProps={handlePropUpdate} 
+                attachments={attachments}
+                onRotationChange={handleRotationChange}
+                onDetachBone={handleDetachBone}
+                onDeleteProp={handleDeleteProp}
+                onAddPresetProp={handleAddPresetProp}
+                onGenerateProp={() => {}}
+                isGenerating={false}
+                propPrompt={""}
+                setPropPrompt={() => {}}
+                isMirrorMode={isMirrorMode}
+                onSelectProp={handleSelectProp}
+                onSelectBone={(id, e) => handleBoneMouseDown(id, e, activeView)}
+                armsInFront={armsInFront}
+                setArmsInFront={setArmsInFront}
+                activeView={activeView}
+                appearance={appearance}
+                setAppearance={setAppearance}
+                activeMuscles={isPlaying ? playbackMuscles : (getCurrentFrame().activeMuscles || [])}
+                onToggleMuscle={handleToggleMuscle}
+                
+                // Exercise Props
+                exerciseName={exerciseName}
+                setExerciseName={setExerciseName}
+                onNew={handleNewExercise}
+                onSave={handleSaveExercise}
+                onLoad={handleLoadExercise}
+                onDeleteExercise={handleDeleteExercise}
+                savedExercises={savedExercises}
+            />
+
+            {/* Right Column: Canvas + Timeline */}
+            <div className="flex-1 flex flex-col min-w-0">
+                 <div className="flex-1 relative overflow-hidden">
+                    <Canvas 
+                        svgRef={svgRef}
+                        currentPose={currentPose}
+                        props={props}
+                        selectedBoneId={selectedBoneId}
+                        selectedPropId={selectedPropId}
+                        attachments={attachments}
+                        dragState={dragState}
+                        isPlaying={isPlaying}
+                        armsInFront={armsInFront}
+                        appearance={appearance}
+                        activeMuscles={isPlaying ? playbackMuscles : (getCurrentFrame().activeMuscles || [])}
+                        activeView={activeView}
+                        layoutMode={layoutMode}
+                        slotViews={slotViews}
+                        onUpdateSlotView={(index, view) => {
+                            if (index === -1) {
+                                setActiveView(view);
+                            } else {
+                                const newSlots = [...slotViews];
+                                newSlots[index] = view;
+                                setSlotViews(newSlots);
+                                setActiveView(view);
+                            }
+                        }}
+                        onBoneMouseDown={handleBoneMouseDown}
+                        onPropMouseDown={handlePropMouseDown}
+                        onSvgMouseMove={handleSvgMouseMove}
+                        onSvgMouseUp={handleSvgMouseUp}
+                        onClearSelection={() => {
+                            setSelectedBoneId(null);
+                            setSelectedPropId(null);
+                        }}
+                        onSetActiveView={setActiveView}
+                    />
+                </div>
+
+                <div className={`flex-shrink-0 transition-[height] duration-300 ease-in-out ${isTimelineExpanded ? 'h-48' : 'h-12'}`}>
+                    <Timeline 
+                        keyframes={keyframes}
+                        currentFrameId={currentFrameId}
+                        onSelectFrame={(id) => {
+                            setCurrentFrameId(id);
+                            setIsPlaying(false);
+                        }}
+                        onAddFrame={handleAddFrame}
+                        onDeleteFrame={handleDeleteFrame}
+                        onDurationChange={handleDurationChange}
+                        isPlaying={isPlaying}
+                        onPlayPause={() => setIsPlaying(!isPlaying)}
+                        isExpanded={isTimelineExpanded}
+                        onToggleExpand={() => setIsTimelineExpanded(!isTimelineExpanded)}
+                        playbackMode={playbackMode}
+                        setPlaybackMode={setPlaybackMode}
+                        defaultDuration={defaultDuration}
+                        onDefaultDurationChange={handleDefaultDurationChange}
+                        onApplyDefaultToAll={handleForceDefaultDuration}
+                    />
+                </div>
+            </div>
+       </div>
     </div>
   );
 };

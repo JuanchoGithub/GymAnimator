@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Bone, SkeletonState, BodyPartType, ViewType } from '../types';
+import { Bone, SkeletonState, BodyPartType, ViewType, Appearance } from '../types';
 import { SKELETON_DEF } from '../constants';
 import { getGlobalTransform } from '../utils';
 
@@ -11,6 +11,7 @@ interface CharacterProps {
   scale?: number;
   view: ViewType;
   armsInFront?: boolean;
+  appearance?: Appearance;
 }
 
 const Character: React.FC<CharacterProps> = ({ 
@@ -19,9 +20,37 @@ const Character: React.FC<CharacterProps> = ({
   onSelectBone, 
   scale = 1, 
   view,
-  armsInFront = false
+  armsInFront = false,
+  appearance = {
+      shirtColor: "#3b82f6",
+      pantsColor: "#1f2937",
+      shoesColor: "#ffffff",
+      skinColor: "#fca5a5",
+      backgroundColor: "#111827"
+  }
 }) => {
   
+  // Helper to resolve color based on body part type
+  const getBoneColor = (boneId: BodyPartType, defaultColor: string): string => {
+      // Skin parts (Head, Neck, Hands)
+      if (boneId === BodyPartType.HEAD || boneId === BodyPartType.NECK || boneId.includes('HAND')) {
+          return appearance.skinColor;
+      }
+      // Shirt parts (Torso, Arms)
+      if (boneId === BodyPartType.TORSO || boneId.includes('ARM')) {
+          return appearance.shirtColor;
+      }
+      // Pants parts (Hips, Upper/Lower Legs)
+      if (boneId === BodyPartType.HIPS || boneId.includes('LEG')) {
+          return appearance.pantsColor;
+      }
+      // Shoes (Feet)
+      if (boneId.includes('FOOT')) {
+          return appearance.shoesColor;
+      }
+      return defaultColor;
+  };
+
   // Calculate render list
   const renderItems = SKELETON_DEF.map(bone => {
       // Calculate Global Transform for this bone
@@ -51,6 +80,8 @@ const Character: React.FC<CharacterProps> = ({
           const jointRadius = bone.jointRadius ?? (bone.width / 2);
           const showJoint = bone.parentId !== null; 
           const effectiveRadius = jointRadius > 0 ? jointRadius : (bone.id.includes('HAND') || bone.id.includes('FOOT') ? 6 : 12);
+          
+          const fillColor = getBoneColor(bone.id, bone.color);
 
           return (
               <g
@@ -67,13 +98,13 @@ const Character: React.FC<CharacterProps> = ({
               >
                 {/* Joint Circle - Rendered first (below bone path) */}
                 {showJoint && (
-                     <circle cx="0" cy="0" r={effectiveRadius} fill={bone.color} className="pointer-events-none" />
+                     <circle cx="0" cy="0" r={effectiveRadius} fill={fillColor} className="pointer-events-none" />
                 )}
 
                 {/* Bone Path */}
                 <path
                   d={viewDef.path}
-                  fill={bone.color}
+                  fill={fillColor}
                   stroke={isSelected ? "#facc15" : "none"}
                   strokeWidth={isSelected ? 3 : 0}
                   className="transition-colors duration-150 ease-in-out hover:fill-yellow-500/20 cursor-pointer pointer-events-auto"
@@ -118,4 +149,3 @@ const Character: React.FC<CharacterProps> = ({
 };
 
 export default Character;
-    

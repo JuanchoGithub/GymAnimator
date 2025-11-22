@@ -89,4 +89,19 @@ export interface GymProp {
   stroke?: string;
   strokeWidth?: number;
   layer?: 'front' | 'back';
+  
+  // Special configuration for specific props
+  cableConfig?: {
+    isCable: boolean;
+    showLine: boolean;
+    handleType: 'BAR' | 'V_BAR' | 'ROPE';
+  };
+}
+
+export interface Appearance {
+    shirtColor: string;
+    pantsColor: string;
+    shoesColor: string;
+    skinColor: string;
+    backgroundColor: string;
 }

@@ -1,7 +1,7 @@
 
 import React from 'react';
 import Character from './Character';
-import { GymProp, SkeletonState, BodyPartType, ViewType, LayoutMode } from '../types';
+import { GymProp, SkeletonState, BodyPartType, ViewType, LayoutMode, Appearance } from '../types';
 import { getSnapPointDef } from '../utils';
 
 interface CanvasProps {
@@ -17,6 +17,7 @@ interface CanvasProps {
     dragState: { isDragging: boolean; type: 'BONE' | 'PROP'; id: string } | null;
     isPlaying: boolean;
     armsInFront: boolean;
+    appearance: Appearance;
     onBoneMouseDown: (id: BodyPartType, e: React.MouseEvent, view: ViewType) => void;
     onPropMouseDown: (e: React.MouseEvent, prop: GymProp, view: ViewType) => void;
     onSvgMouseMove: (e: React.MouseEvent, view: ViewType) => void;
@@ -38,6 +39,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     dragState,
     isPlaying,
     armsInFront,
+    appearance,
     onBoneMouseDown,
     onPropMouseDown,
     onSvgMouseMove,
@@ -127,8 +129,9 @@ export const Canvas: React.FC<CanvasProps> = ({
       return (
         <div 
             id={`viewport-${view}`}
-            className={`relative bg-gray-200 overflow-hidden border-4 transition-colors w-full h-full min-h-0 min-w-0 ${isActive ? 'border-blue-500 shadow-lg z-10' : 'border-gray-700 opacity-90 hover:opacity-100'}`}
+            className={`relative overflow-hidden border-4 transition-colors w-full h-full min-h-0 min-w-0 ${isActive ? 'border-blue-500 shadow-lg z-10' : 'border-gray-700 opacity-90 hover:opacity-100'}`}
             onMouseDown={() => onSetActiveView(view)}
+            style={{ backgroundColor: appearance.backgroundColor === 'transparent' ? 'transparent' : appearance.backgroundColor }}
         >
              {/* Label & Controls Overlay */}
              <div className="absolute top-0 left-0 w-full p-2 z-20 flex justify-between items-start pointer-events-none">
@@ -154,10 +157,12 @@ export const Canvas: React.FC<CanvasProps> = ({
                 )}
             </div>
             
-            {/* Grid Background */}
-            <div className="absolute inset-0 pointer-events-none opacity-30"
-                style={{ backgroundImage: 'radial-gradient(#6b7280 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
-            </div>
+            {/* Grid Background - Only show if not transparent background, or if explicit grid toggle exists. For now, hide if transparent to allow clean export/view */}
+            {appearance.backgroundColor !== 'transparent' && (
+                <div className="absolute inset-0 pointer-events-none opacity-30"
+                    style={{ backgroundImage: 'radial-gradient(#6b7280 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+                </div>
+            )}
 
             <svg 
                 width="100%" 
@@ -182,6 +187,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                     }}
                     view={view}
                     armsInFront={armsInFront}
+                    appearance={appearance}
                 />
 
                  {/* Render Props (Front) */}

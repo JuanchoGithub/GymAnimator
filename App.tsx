@@ -5,9 +5,8 @@ import Timeline from './components/Timeline';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { Canvas } from './components/Canvas';
-import { BodyPartType, Keyframe, SkeletonState, GymProp, PropViewTransform, ViewType, LayoutMode } from './types';
+import { BodyPartType, Keyframe, SkeletonState, GymProp, PropViewTransform, ViewType, LayoutMode, Appearance } from './types';
 import { INITIAL_POSE, SAMPLE_PROPS, SKELETON_DEF, MIRROR_MAPPING, IK_CHAINS } from './constants';
-import { generatePropSvg } from './services/geminiService';
 import { getGlobalTransform, solveTwoBoneIK, toDegrees, normalizeAngle, transformPoint, syncDumbbells, exportAnimation, Point, getSnapPointDef, synchronizePropViews } from './utils';
 
 const SNAP_THRESHOLD = 20;
@@ -27,18 +26,24 @@ const App: React.FC = () => {
   const [props, setProps] = useState<GymProp[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentPose, setCurrentPose] = useState<SkeletonState>(JSON.parse(JSON.stringify(INITIAL_POSE)));
-  const [propPrompt, setPropPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
+  // No longer using propPrompt or isGenerating
   const [isMirrorMode, setIsMirrorMode] = useState(false);
   const [isTimelineExpanded, setIsTimelineExpanded] = useState(true);
   const [exportMode, setExportMode] = useState<'accurate' | 'interpolated'>('accurate');
   const [activeView, setActiveView] = useState<ViewType>('FRONT');
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('SINGLE');
-  // Slot configuration for multi-view modes: 0=Primary, 1=Secondary(Right), 2=Tertiary(Bottom)
   const [slotViews, setSlotViews] = useState<ViewType[]>(['FRONT', 'SIDE', 'TOP']);
   const [armsInFront, setArmsInFront] = useState(false);
 
   const [attachments, setAttachments] = useState<Record<string, { propId: string, snapPointId: string, rotationOffset: number }>>({});
+  
+  const [appearance, setAppearance] = useState<Appearance>({
+      shirtColor: "#3b82f6",
+      pantsColor: "#1f2937",
+      shoesColor: "#ffffff",
+      skinColor: "#fca5a5",
+      backgroundColor: "#111827"
+  });
 
   // Dragging State
   const [dragState, setDragState] = useState<{
@@ -79,6 +84,7 @@ const App: React.FC = () => {
         setProps(prevProps => prevProps.map(p => {
             const tr = frame.propTransforms[p.id];
             if (tr) {
+                // Merge transforms but keep other props (like view definitions which might change via toggle)
                 return { ...p, transforms: JSON.parse(JSON.stringify(tr)) };
             }
             return p;
@@ -224,9 +230,6 @@ const App: React.FC = () => {
 
   const handleSvgMouseMove = (e: React.MouseEvent, view: ViewType) => {
       if (!dragState || !dragState.isDragging) return;
-      
-      // If dragging started in a different view, ignore or handle carefully. 
-      // Here we strictly control based on the view where drag started.
       if (dragState.view !== view) return;
 
       const svg = e.currentTarget as SVGSVGElement;
@@ -256,7 +259,6 @@ const App: React.FC = () => {
                       y: newY
                   };
                   
-                  // Use helper to sync other views based on rules
                   return synchronizePropViews(p, view, newTransform);
               }
               return p;
@@ -273,7 +275,6 @@ const App: React.FC = () => {
               
               if (attachedHands.length > 0) {
                   let newPose = JSON.parse(JSON.stringify(currentPose));
-                  // IK updates need to happen in all views potentially if the prop moved in a way that affects them
                   VIEWS.forEach(v => {
                     attachedHands.forEach(([handId, info]) => {
                         const snapPoint = movingProp.snapPoints.find(sp => sp.id === info.snapPointId);
@@ -331,7 +332,7 @@ const App: React.FC = () => {
                   props.forEach(prop => {
                       prop.snapPoints.forEach(sp => {
                           const { x, y, visible } = getSnapPointDef(sp, view);
-                          if (!visible) return; // Skip hidden snap points
+                          if (!visible) return;
 
                           const globalSp = transformPoint(x, y, prop.transforms[view]);
                           const dist = Math.sqrt(Math.pow(globalSp.x - svgPoint.x, 2) + Math.pow(globalSp.y - svgPoint.y, 2));
@@ -404,8 +405,6 @@ const App: React.FC = () => {
               affectedBones.forEach(sourceId => {
                   const mirrorId = MIRROR_MAPPING[sourceId];
                   if (mirrorId && newPose[sourceId][view] !== undefined) {
-                      // For SIDE view, mirror direction is identical (moving forward/backward together).
-                      // For FRONT/TOP view, mirror direction is opposite (abduction/adduction).
                       const mirrorSign = view === 'SIDE' ? 1 : -1;
                       newPose[mirrorId][view] = newPose[sourceId][view] * mirrorSign;
                   }
@@ -448,7 +447,6 @@ const App: React.FC = () => {
         if (isMirrorMode) {
             const mirrorId = MIRROR_MAPPING[id];
             if (mirrorId) {
-                // Side view rotation is usually synchronous (same direction), Front is mirrored (opposite)
                 const mirrorSign = view === 'SIDE' ? 1 : -1;
                 p[mirrorId][view] = a * mirrorSign;
             }
@@ -465,7 +463,6 @@ const App: React.FC = () => {
         updateKeyframeProps(syncedProps);
     }
 
-    // Update offsets if attached (Specific to current view context? No, usually syncing keeps relative angle)
     if (attachments[selectedBoneId]) {
          const att = attachments[selectedBoneId];
          const handGlobal = getGlobalTransform(selectedBoneId, newPose, activeView);
@@ -535,37 +532,6 @@ const App: React.FC = () => {
       })));
   };
 
-  const handleGenerateProp = async () => {
-    if (!propPrompt) return;
-    setIsGenerating(true);
-    try {
-      const result = await generatePropSvg(propPrompt);
-      const newProp: GymProp = {
-        id: uuidv4(),
-        name: result.name,
-        views: {
-            FRONT: { path: result.path, viewBox: result.viewBox },
-            SIDE: { path: result.path, viewBox: result.viewBox }, 
-            TOP: { path: result.path, viewBox: result.viewBox }
-        },
-        transforms: {
-            FRONT: { x: 200, y: 350, rotation: 0, scaleX: 1, scaleY: 1 },
-            SIDE: { x: 200, y: 350, rotation: 0, scaleX: 1, scaleY: 1 },
-            TOP: { x: 200, y: 200, rotation: 0, scaleX: 1, scaleY: 1 },
-        },
-        attachedTo: null,
-        snapPoints: [{ id: 'center', name: 'Center', x: 0, y: 0 }],
-        color: '#cccccc'
-      };
-      registerNewProp(newProp);
-      setPropPrompt('');
-    } catch (e) {
-      alert("Failed to generate prop. Please check your API Key.");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
   const handleAddPresetProp = (preset: any) => {
        const newProp: GymProp = {
         id: uuidv4(),
@@ -581,7 +547,8 @@ const App: React.FC = () => {
         color: preset.color,
         layer: preset.layer,
         stroke: preset.stroke,
-        strokeWidth: preset.strokeWidth
+        strokeWidth: preset.strokeWidth,
+        cableConfig: preset.cableConfig
       };
       registerNewProp(newProp);
   };
@@ -642,15 +609,18 @@ const App: React.FC = () => {
             onDetachBone={handleDetachBone}
             onDeleteProp={handleDeleteProp}
             onAddPresetProp={handleAddPresetProp}
-            onGenerateProp={handleGenerateProp}
-            isGenerating={isGenerating}
-            propPrompt={propPrompt}
-            setPropPrompt={setPropPrompt}
+            onGenerateProp={() => {}} // Removed
+            isGenerating={false}
+            propPrompt={""}
+            setPropPrompt={() => {}}
             isMirrorMode={isMirrorMode}
             onSelectProp={handleSelectProp}
+            onSelectBone={(id, e) => handleBoneMouseDown(id, e, activeView)}
             armsInFront={armsInFront}
             setArmsInFront={setArmsInFront}
             activeView={activeView}
+            appearance={appearance}
+            setAppearance={setAppearance}
         />
 
         <Canvas 
@@ -666,6 +636,7 @@ const App: React.FC = () => {
             activeView={activeView}
             layoutMode={layoutMode}
             slotViews={slotViews}
+            appearance={appearance}
             onUpdateSlotView={(index, view) => {
                 const newSlots = [...slotViews];
                 newSlots[index] = view;

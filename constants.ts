@@ -149,6 +149,20 @@ const createProp = (base: Partial<GymProp>, frontV: string, sideV: string, topV:
 
 const hiddenInSide = { SIDE: { x: 0, y: 0, visible: false } };
 
+// Helper for cable paths
+export const getCablePath = (type: 'BAR' | 'V_BAR' | 'ROPE', hasLine: boolean) => {
+    const line = hasLine ? "M0,0 L0,-1000" : "";
+    switch(type) {
+        case 'BAR': 
+            return `${line} M-40,0 L40,0 L40,4 L-40,4 Z`;
+        case 'V_BAR':
+            return `${line} M0,0 L-25,25 L-22,28 L0,6 L22,28 L25,25 L0,0 Z`;
+        case 'ROPE':
+            return `${line} M-2,0 L-2,10 C-2,15 -15,30 -15,40 L-10,40 C-10,30 2,15 2,10 L2,0 Z M2,0 L2,10 C2,15 15,30 15,40 L10,40 C10,30 -2,15 -2,10 L-2,0 Z`;
+    }
+    return '';
+}
+
 export const SAMPLE_PROPS = [
   createProp(
     {
@@ -166,12 +180,26 @@ export const SAMPLE_PROPS = [
             { id: 'outside_r', name: 'Outside R', x: 145, y: 0, perView: hiddenInSide }
         ]
     },
-    // Front: Bar, Inner stops, Plates
     'M-180,-4 L180,-4 L180,4 L-180,4 Z M-140,-35 L-130,-35 L-130,35 L-140,35 Z M-152,-35 L-142,-35 L-142,35 L-152,35 Z M130,-35 L140,-35 L140,35 L130,35 Z M142,-35 L152,-35 L152,35 L142,35 Z',
-    // Side: Large rounded plate, small bar end
     'M-35,0 A35,35 0 1,0 35,0 A35,35 0 1,0 -35,0 Z M-4,0 A4,4 0 1,0 4,0 A4,4 0 1,0 -4,0 Z', 
-    // Top: Same as Front (Rotationally symmetric)
     'M-180,-4 L180,-4 L180,4 L-180,4 Z M-140,-35 L-130,-35 L-130,35 L-140,35 Z M-152,-35 L-142,-35 L-142,35 L-152,35 Z M130,-35 L140,-35 L140,35 L130,35 Z M142,-35 L152,-35 L152,35 L142,35 Z'
+  ),
+  createProp(
+      {
+          name: 'W Barbell',
+          views: { FRONT: { viewBox: "-150 -40 300 80" }, TOP: { viewBox: "-150 -40 300 80" } } as any,
+          snapPoints: [
+              { id: 'center', name: 'Center', x: 0, y: 0 },
+              { id: 'inner_l', name: 'Inner L', x: -20, y: 5 },
+              { id: 'inner_r', name: 'Inner R', x: 20, y: 5 },
+              { id: 'outer_l', name: 'Outer L', x: -50, y: -5 },
+              { id: 'outer_r', name: 'Outer R', x: 50, y: -5 }
+          ]
+      },
+      // Front: W Shape
+      'M-140,-4 L-100,-4 L-80,-4 L-50,-10 L-20,4 L0,0 L20,4 L50,-10 L80,-4 L100,-4 L140,-4 L140,4 L100,4 L80,4 L50,-2 L20,12 L0,8 L-20,12 L-50,-2 L-80,4 L-100,4 L-140,4 Z M-100,-35 L-90,-35 L-90,35 L-100,35 Z M100,-35 L90,-35 L90,35 L100,35 Z',
+      'M-35,0 A35,35 0 1,0 35,0 A35,35 0 1,0 -35,0 Z M-4,0 A4,4 0 1,0 4,0 A4,4 0 1,0 -4,0 Z',
+      'M-140,-4 L-100,-4 L-80,-4 L-50,-10 L-20,4 L0,0 L20,4 L50,-10 L80,-4 L100,-4 L140,-4 L140,4 L100,4 L80,4 L50,-2 L20,12 L0,8 L-20,12 L-50,-2 L-80,4 L-100,4 L-140,4 Z'
   ),
   createProp(
       {
@@ -183,11 +211,8 @@ export const SAMPLE_PROPS = [
             { id: 'disc_r', name: 'Disc R', x: 22, y: 0, perView: hiddenInSide }
         ]
       },
-      // Front: Handle, weights
       'M-30,-3 L30,-3 L30,3 L-30,3 Z M-30,-12 L-15,-12 L-15,12 L-30,12 Z M15,-12 L30,-12 L30,12 L15,12 Z',
-      // Side: Round Weight
       'M-12,0 A12,12 0 1,0 12,0 A12,12 0 1,0 -12,0 Z', 
-      // Top: Same as Front
       'M-30,-3 L30,-3 L30,3 L-30,3 Z M-30,-12 L-15,-12 L-15,12 L-30,12 Z M15,-12 L30,-12 L30,12 L15,12 Z'
   ),
   createProp(
@@ -197,9 +222,60 @@ export const SAMPLE_PROPS = [
         views: { FRONT: { viewBox: "-30 -100 60 200" } } as any,
         snapPoints: [{ id: 'head', name: 'Head', x: 0, y: -80 }, { id: 'center', name: 'Center', x: 0, y: 0 }]
       },
-      'M-90,-20 L90,-20 L90,-10 L-90,-10 Z M-80,-10 L-80,20 M80,-10 L80,20', // Side of bench (seen from Front of screen)
-      'M-20,-20 L20,-20 L20,-10 L-20,-10 Z M-15,-10 L-15,20 M15,-10 L15,20', // End of bench (seen from Side of screen)
-      'M-90,-20 L90,-20 L90,20 L-90,20 Z' // Top of bench
+      'M-90,-20 L90,-20 L90,-10 L-90,-10 Z M-80,-10 L-80,20 M80,-10 L80,20', 
+      'M-20,-20 L20,-20 L20,-10 L-20,-10 Z M-15,-10 L-15,20 M15,-10 L15,20', 
+      'M-90,-20 L90,-20 L90,20 L-90,20 Z' 
+  ),
+  createProp(
+      {
+        name: 'Bench (45°)',
+        color: "#374151", stroke: "#9ca3af", strokeWidth: 2, layer: 'back',
+        views: { SIDE: { viewBox: "-50 -50 100 100" } } as any,
+        snapPoints: [{ id: 'seat', name: 'Seat', x: 20, y: 10 }]
+      },
+      'M-30,20 L30,20 L30,30 L-30,30 Z M-25,10 L25,10 L20,-40 L-20,-40 Z', // Front (approx)
+      'M-30,20 L10,20 L-20,-30 L-30,-20 Z M-30,20 L-30,40 M10,20 L10,40', // Side: Angled back
+      'M-20,-40 L20,-40 L30,20 L-30,20 Z' // Top
+  ),
+  createProp(
+      {
+        name: 'Bench (90°)',
+        color: "#374151", stroke: "#9ca3af", strokeWidth: 2, layer: 'back',
+        snapPoints: [{ id: 'seat', name: 'Seat', x: 0, y: 10 }]
+      },
+      'M-30,10 L30,10 L30,20 L-30,20 Z M-25,10 L25,10 L25,-50 L-25,-50 Z', // Front
+      'M-20,10 L20,10 L20,20 L-20,20 Z M-20,10 L-20,-50 L-10,-50 L-10,10 Z', // Side: Vertical back
+      'M-30,10 L30,10 L30,20 L-30,20 Z' // Top
+  ),
+  // Cables
+  createProp(
+      {
+          name: 'Cable (Straight)',
+          color: "#1f2937",
+          snapPoints: [{id: 'handle', name: 'Handle', x: 0, y: 0}],
+          cableConfig: { isCable: true, showLine: true, handleType: 'BAR' }
+      },
+      getCablePath('BAR', true), getCablePath('BAR', true), getCablePath('BAR', true)
+  ),
+  createProp(
+      {
+          name: 'Cable (V-Bar)',
+          color: "#1f2937",
+          snapPoints: [{id: 'handle', name: 'Handle', x: 0, y: 25}],
+          cableConfig: { isCable: true, showLine: true, handleType: 'V_BAR' }
+      },
+      getCablePath('V_BAR', true), getCablePath('V_BAR', true), getCablePath('V_BAR', true)
+  ),
+  createProp(
+      {
+          name: 'Cable (Rope)',
+          color: "#d4d4d4", // Rope color
+          stroke: "#1f2937", // Dark stroke
+          strokeWidth: 1,
+          snapPoints: [{id: 'handle_l', name: 'Handle L', x: -10, y: 40}, {id: 'handle_r', name: 'Handle R', x: 10, y: 40}],
+          cableConfig: { isCable: true, showLine: true, handleType: 'ROPE' }
+      },
+      getCablePath('ROPE', true), getCablePath('ROPE', true), getCablePath('ROPE', true)
   )
 ];
 

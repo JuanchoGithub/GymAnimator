@@ -1,5 +1,5 @@
 
-import { BodyPartType, SkeletonState, GymProp, Keyframe, PropViewTransform, ViewType, LayoutMode, SnapPoint, MuscleGroup } from "./types";
+import { BodyPartType, SkeletonState, GymProp, Keyframe, PropViewTransform, ViewType, LayoutMode, SnapPoint, MuscleGroup, Appearance } from "./types";
 import { SKELETON_DEF, IK_CHAINS, MUSCLE_OVERLAYS } from "./constants";
 
 // --- Geometry Helpers ---
@@ -279,9 +279,11 @@ export const exportAnimation = async (
     activeView: ViewType,
     slotViews: ViewType[] = ['FRONT', 'SIDE', 'TOP'],
     action: 'download' | 'clipboard' = 'download',
-    backgroundColor: string = '#f3f4f6',
+    appearance: Appearance,
     filename: string = 'gym-animation'
 ) => {
+    const backgroundColor = appearance.backgroundColor;
+
     // 1. Determine Views to Export based on Layout
     let viewsToExport: { view: ViewType, x: number, y: number, w: number, h: number, ox: number, oy: number, scale: number }[] = [];
     let width = 400;
@@ -331,11 +333,6 @@ export const exportAnimation = async (
             allElements.forEach((node: Element) => {
                 const cls = node.getAttribute('class') || '';
 
-                // Remove selection artifacts and existing muscle pulses (we re-inject them for full animation support)
-                if (cls.includes('animate-pulse')) {
-                    node.remove();
-                    return;
-                }
                 // Remove specific UI elements by attribute pattern
                 // Selection Circle Handle (r=4)
                 if (node.tagName === 'circle' && node.getAttribute('r') === '4') {
@@ -361,12 +358,26 @@ export const exportAnimation = async (
                 node.removeAttribute('onmousedown');
                 node.removeAttribute('onmousemove');
                 node.removeAttribute('onmouseup');
+
+                // Handle Muscle Overlays & Pulse classes
+                // Remove muscle paths (they will be re-injected for animation)
+                if (node.tagName === 'path' && cls.includes('animate-pulse')) {
+                    node.remove();
+                    return;
+                }
+                
+                // For joint circles (Shoulders, Glutes), preserve the element but strip the pulse class
+                if (node.tagName === 'circle' && cls.includes('animate-pulse')) {
+                     // ID injection happens below in bone loop, here just strip the class to reset state
+                     // Do not remove node!
+                }
             });
 
             // Inject Muscle Paths (Invisible by default, animated via CSS)
             SKELETON_DEF.forEach(bone => {
                 const boneGroup = svg.querySelector(`#bone-${bone.id}-${v.view}`);
                 if (boneGroup) {
+                    // Muscle Overlays
                     Object.entries(MUSCLE_OVERLAYS).forEach(([muscle, boneMap]) => {
                         const m = muscle as MuscleGroup;
                         // Type safe access to overlay definition
@@ -389,6 +400,21 @@ export const exportAnimation = async (
                              boneGroup.appendChild(group);
                         }
                     });
+
+                    // Joint Logic (Shoulders, Glutes) - Inject IDs for animation
+                    if (bone.id.includes('UPPER_ARM') || bone.id.includes('UPPER_LEG')) {
+                        const jointCircle = boneGroup.querySelector('circle');
+                        if (jointCircle) {
+                             const jointId = `joint-${bone.id}-${v.view}`;
+                             jointCircle.setAttribute('id', jointId);
+                             
+                             // Reset fill to base color (clean slate from snapshot)
+                             let baseColor = bone.color;
+                             if (bone.id.includes('UPPER_ARM')) baseColor = appearance.skinColor;
+                             if (bone.id.includes('UPPER_LEG')) baseColor = appearance.pantsColor;
+                             jointCircle.setAttribute('fill', baseColor);
+                        }
+                    }
                 }
             });
             
@@ -602,7 +628,7 @@ export const exportAnimation = async (
             }
         });
         
-        // -- MUSCLE ACTIVATION ANIMATION --
+        // -- MUSCLE ACTIVATION ANIMATION (Standard) --
         Object.keys(MUSCLE_OVERLAYS).forEach(mKey => {
             const m = mKey as MuscleGroup;
             const boneMap = MUSCLE_OVERLAYS[m] as Partial<Record<BodyPartType, Partial<Record<ViewType, string>>>>;
@@ -616,21 +642,50 @@ export const exportAnimation = async (
                      const animName = `anim-muscle-${m}-${boneId}-${view}`;
                      let keyframesCss = '';
                      
-                     // For muscles, we rely on baked frames to capture the discrete active state
                      bakedFrames.forEach(frame => {
                          const percentage = (frame.time / totalDuration) * 100;
                          const isActive = frame.activeMuscles.includes(m);
-                         const opacity = isActive ? 1 : 0; // Full opacity when active, pulse handles fluctuation
+                         const opacity = isActive ? 1 : 0;
                          keyframesCss += `\n  ${fmt(percentage)}% { opacity: ${opacity}; }`;
                      });
 
                      if (keyframesCss) {
                          css += `\n@keyframes ${animName} {${keyframesCss}\n}`;
-                         // Target the GROUP for On/Off visibility
                          css += `\n#muscle-group-${m}-${boneId}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; }`;
                      }
                  }
             });
+        });
+
+        // -- JOINT ACTIVATION ANIMATION (Shoulders/Glutes) --
+        // Shoulders -> UPPER_ARM_L, UPPER_ARM_R
+        // Glutes -> UPPER_LEG_L, UPPER_LEG_R
+        const jointMappings = [
+            { muscle: MuscleGroup.SHOULDERS, boneIds: ['UPPER_ARM_L', 'UPPER_ARM_R'], baseColor: appearance.skinColor },
+            { muscle: MuscleGroup.GLUTES, boneIds: ['UPPER_LEG_L', 'UPPER_LEG_R'], baseColor: appearance.pantsColor }
+        ];
+
+        jointMappings.forEach(jm => {
+             jm.boneIds.forEach(bid => {
+                 const jointId = `joint-${bid}-${view}`;
+                 // We iterate through generated IDs. Even if element doesn't exist (e.g. different view), CSS is harmless.
+                 const animName = `anim-joint-${jm.muscle}-${bid}-${view}`;
+                 let keyframesCss = '';
+                 let hasActivation = false;
+
+                 bakedFrames.forEach(frame => {
+                     const percentage = (frame.time / totalDuration) * 100;
+                     const isActive = frame.activeMuscles.includes(jm.muscle);
+                     if (isActive) hasActivation = true;
+                     const color = isActive ? '#ef4444' : jm.baseColor;
+                     keyframesCss += `\n  ${fmt(percentage)}% { fill: ${color}; }`;
+                 });
+
+                 if (hasActivation && keyframesCss) {
+                     css += `\n@keyframes ${animName} {${keyframesCss}\n}`;
+                     css += `\n#${jointId} { animation: ${animName} ${totalDuration}ms linear infinite; }`;
+                 }
+             });
         });
 
         // -- PROP ANIMATION --

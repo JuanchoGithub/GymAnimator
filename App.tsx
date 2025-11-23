@@ -782,7 +782,7 @@ const App: React.FC = () => {
       }
 
       try {
-        await exportAnimation(exportFrames, props, attachments, mode, layoutMode, activeView, slotViews, action, appearance.backgroundColor, exerciseName);
+        await exportAnimation(exportFrames, props, attachments, mode, layoutMode, activeView, slotViews, action, appearance, exerciseName);
         // Success notification is handled in Header for clipboard, download is implicit
       } catch (e) {
           console.error(e);

@@ -1,4 +1,5 @@
 
+
 import { BodyPartType, SkeletonState, GymProp, Keyframe, PropViewTransform, ViewType, LayoutMode, SnapPoint, MuscleGroup, Appearance } from "./types";
 import { SKELETON_DEF, IK_CHAINS, MUSCLE_OVERLAYS } from "./constants";
 
@@ -31,13 +32,13 @@ export const normalizeAngle = (angle: number) => {
 };
 
 // Calculate global position and rotation of a bone's origin (Pivot) for a specific view
-export const getGlobalTransform = (boneId: BodyPartType | null, pose: SkeletonState, view: ViewType): Transform => {
+export const getGlobalTransform = (boneId: BodyPartType | null, pose: SkeletonState, view: ViewType, rootPos?: {x: number, y: number}): Transform => {
     if (!boneId) return { x: 0, y: 0, angle: 0 };
 
     const bone = getBoneDef(boneId);
     if (!bone) return { x: 0, y: 0, angle: 0 };
 
-    const parentTransform = getGlobalTransform(bone.parentId, pose, view);
+    const parentTransform = getGlobalTransform(bone.parentId, pose, view, rootPos);
     const viewDef = bone.views[view];
     
     if (!viewDef) return parentTransform;
@@ -49,9 +50,18 @@ export const getGlobalTransform = (boneId: BodyPartType | null, pose: SkeletonSt
     const rotatedX = viewDef.originX * Math.cos(radP) - viewDef.originY * Math.sin(radP);
     const rotatedY = viewDef.originX * Math.sin(radP) + viewDef.originY * Math.cos(radP);
 
+    let finalX = parentTransform.x + rotatedX;
+    let finalY = parentTransform.y + rotatedY;
+
+    // Apply Root Translation Offset if this is the root bone
+    if (bone.id === BodyPartType.ROOT && rootPos) {
+        finalX += rootPos.x;
+        finalY += rootPos.y;
+    }
+
     return {
-        x: parentTransform.x + rotatedX,
-        y: parentTransform.y + rotatedY,
+        x: finalX,
+        y: finalY,
         angle: parentTransform.angle + (pose[boneId]?.[view] || 0)
     };
 };
@@ -118,14 +128,16 @@ export const solveTwoBoneIK = (
     lowerId: BodyPartType,
     target: Point,
     pose: SkeletonState,
-    view: ViewType
+    view: ViewType,
+    rootPos?: { x: number, y: number }
 ): Record<string, number> | null => {
     const upperBone = getBoneDef(upperId);
     const lowerBone = getBoneDef(lowerId);
     if (!upperBone || !lowerBone) return null;
 
     // 1. Calculate Global Start Position (Shoulder/Hip)
-    const parentTransform = getGlobalTransform(upperBone.parentId, pose, view);
+    // Pass rootPos to correctly calculate start position if root has moved
+    const parentTransform = getGlobalTransform(upperBone.parentId, pose, view, rootPos);
     
     // Upper Bone Origin in Global Space
     const viewDef = upperBone.views[view];
@@ -208,7 +220,8 @@ export const solveTwoBoneIK = (
 export const syncDumbbells = (
     currentProps: GymProp[], 
     pose: SkeletonState, 
-    currentAttachments: Record<string, { propId: string, snapPointId: string, rotationOffset: number }>
+    currentAttachments: Record<string, { propId: string, snapPointId: string, rotationOffset: number }>,
+    rootPos?: Record<ViewType, {x: number, y: number}>
 ) => {
     // Sync happens per view, but since this function is called often, we iterate all views
     // to ensure consistency if multiple views are visible or being edited.
@@ -225,7 +238,8 @@ export const syncDumbbells = (
             const transform = prop.transforms[view];
 
             if (prop.name.toLowerCase().includes('dumbbell')) {
-                const handGlobal = getGlobalTransform(handId as BodyPartType, pose, view);
+                const rp = rootPos ? rootPos[view] : undefined;
+                const handGlobal = getGlobalTransform(handId as BodyPartType, pose, view, rp);
                 const snapPoint = prop.snapPoints.find(sp => sp.id === info.snapPointId);
                 const spPos = snapPoint ? getSnapPointDef(snapPoint, view) : {x: 0, y: 0};
 
@@ -332,25 +346,13 @@ export const exportAnimation = async (
             const allElements = svg.querySelectorAll('*');
             allElements.forEach((node: Element) => {
                 const cls = node.getAttribute('class') || '';
-
-                // Remove specific UI elements by attribute pattern
-                // Selection Circle Handle (r=4)
-                if (node.tagName === 'circle' && node.getAttribute('r') === '4') {
-                    node.remove();
-                    return;
-                }
-                // Prop selection highlight path (stroke yellow, fill none)
-                if (node.tagName === 'path' && node.getAttribute('stroke') === '#facc15' && node.getAttribute('fill') === 'none') {
-                    node.remove();
-                    return;
-                }
-                // Reset Bone selection stroke
+                // ... cleanup logic ...
+                if (node.tagName === 'circle' && node.getAttribute('r') === '4') { node.remove(); return; }
+                if (node.tagName === 'path' && node.getAttribute('stroke') === '#facc15' && node.getAttribute('fill') === 'none') { node.remove(); return; }
                 if (node.getAttribute('stroke') === '#facc15') {
                     node.removeAttribute('stroke');
                     node.removeAttribute('stroke-width');
                 }
-
-                // Remove attributes not needed for rendering
                 node.removeAttribute('class');
                 node.removeAttribute('style');
                 node.removeAttribute('cursor');
@@ -358,93 +360,61 @@ export const exportAnimation = async (
                 node.removeAttribute('onmousedown');
                 node.removeAttribute('onmousemove');
                 node.removeAttribute('onmouseup');
-
-                // Handle Muscle Overlays & Pulse classes
-                // Remove muscle paths (they will be re-injected for animation)
-                if (node.tagName === 'path' && cls.includes('animate-pulse')) {
-                    node.remove();
-                    return;
-                }
-                
-                // For joint circles (Shoulders, Glutes), preserve the element but strip the pulse class
-                if (node.tagName === 'circle' && cls.includes('animate-pulse')) {
-                     // Logic handled in injection loop below
-                }
+                if (node.tagName === 'path' && cls.includes('animate-pulse')) { node.remove(); return; }
+                if (node.tagName === 'circle' && cls.includes('animate-pulse')) {} // kept
             });
 
-            // Inject Muscle Paths (Invisible by default, animated via CSS)
+            // Inject Muscle Paths
             SKELETON_DEF.forEach(bone => {
                 const boneGroup = svg.querySelector(`#bone-${bone.id}-${v.view}`);
                 if (boneGroup) {
-                    // Muscle Overlays
                     Object.entries(MUSCLE_OVERLAYS).forEach(([muscle, boneMap]) => {
                         const m = muscle as MuscleGroup;
-                        // Type safe access to overlay definition
                         const overlays = boneMap as Partial<Record<BodyPartType, Partial<Record<ViewType, string>>>>;
                         const overlayPath = overlays[bone.id]?.[v.view];
-                        
                         if (overlayPath) {
-                             // Create a group to handle the On/Off timeline animation
                              const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
                              group.setAttribute("id", `muscle-group-${m}-${bone.id}-${v.view}`);
-                             group.setAttribute("opacity", "0"); // Default to hidden
-
-                             // Create the path inside the group to handle the continuous pulse
+                             group.setAttribute("opacity", "0");
                              const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
                              path.setAttribute("d", overlayPath);
                              path.setAttribute("fill", "#ef4444");
                              path.setAttribute("class", "muscle-pulse");
-                             
                              group.appendChild(path);
                              boneGroup.appendChild(group);
                         }
                     });
-
-                    // Joint Logic (Shoulders, Glutes) - Inject IDs for animation
                     if (bone.id.includes('UPPER_ARM') || bone.id.includes('UPPER_LEG')) {
                         const jointCircle = boneGroup.querySelector('circle');
                         if (jointCircle) {
-                             // Reset base circle to base color
                              let baseColor = bone.color;
                              if (bone.id.includes('UPPER_ARM')) baseColor = appearance.skinColor;
                              if (bone.id.includes('UPPER_LEG')) baseColor = appearance.pantsColor;
                              jointCircle.setAttribute('fill', baseColor);
                              jointCircle.removeAttribute('id');
                              jointCircle.removeAttribute('class');
-
-                             // Create wrapper group for active state
                              const activeGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
                              activeGroup.setAttribute("id", `joint-active-group-${bone.id}-${v.view}`);
-                             activeGroup.setAttribute("opacity", "0"); // Hidden by default
-
-                             // Create pulsing overlay circle
+                             activeGroup.setAttribute("opacity", "0");
                              const pulseCircle = jointCircle.cloneNode(true) as SVGCircleElement;
                              pulseCircle.setAttribute("class", "muscle-pulse");
                              pulseCircle.setAttribute("fill", "#ef4444");
                              pulseCircle.removeAttribute("id");
                              pulseCircle.setAttribute("stroke", "none");
-                             
                              activeGroup.appendChild(pulseCircle);
-                             
-                             // Insert after original joint circle so it overlays it
-                             if (jointCircle.nextSibling) {
-                                 jointCircle.parentNode?.insertBefore(activeGroup, jointCircle.nextSibling);
-                             } else {
-                                 jointCircle.parentNode?.appendChild(activeGroup);
-                             }
+                             if (jointCircle.nextSibling) { jointCircle.parentNode?.insertBefore(activeGroup, jointCircle.nextSibling); } 
+                             else { jointCircle.parentNode?.appendChild(activeGroup); }
                         }
                     }
                 }
             });
             
             svgContentInner += `<g transform="translate(${v.x + v.ox}, ${v.y + v.oy}) scale(${v.scale})">\n`;
-            
             Array.from(svg.children).forEach(child => {
                 let str = serializer.serializeToString(child);
                 str = str.replace(/ xmlns="http:\/\/www.w3.org\/2000\/svg"/g, '');
                 svgContentInner += str + '\n';
             });
-
             svgContentInner += `</g>\n`;
         }
     });
@@ -454,13 +424,14 @@ export const exportAnimation = async (
     const bakedFrames: { 
         time: number; 
         pose: SkeletonState; 
+        rootPos: Record<ViewType, {x: number, y: number}>;
         props: Record<string, Record<ViewType, PropViewTransform>>;
         activeMuscles: MuscleGroup[];
     }[] = [];
     
     const SAMPLE_RATE = 50; 
     
-    // Accurate AND Adaptive modes both start by baking samples
+    // Interpolation Logic
     if (mode === 'accurate' || mode === 'adaptive') {
         let currentTime = 0;
         while (currentTime <= totalDuration) {
@@ -482,7 +453,7 @@ export const exportAnimation = async (
             const timeInFrame = currentTime - accumulated;
             const progress = Math.min(1, Math.max(0, timeInFrame / currentKeyframe.duration));
 
-            // Interpolate Props
+            // Props
             const interpolatedProps: any = {};
             props.forEach(p => {
                 interpolatedProps[p.id] = {};
@@ -499,7 +470,18 @@ export const exportAnimation = async (
                 });
             });
 
-            // Interpolate Pose
+            // Root Pos
+            const interpolatedRootPos: any = {};
+            ['FRONT', 'SIDE', 'TOP'].forEach((v: any) => {
+                const s = currentKeyframe.rootPos?.[v] || {x:0, y:0};
+                const e = nextKeyframe.rootPos?.[v] || {x:0, y:0};
+                interpolatedRootPos[v] = {
+                    x: s.x + (e.x - s.x) * progress,
+                    y: s.y + (e.y - s.y) * progress
+                };
+            });
+
+            // Pose
             const interpolatedPose: any = {};
             Object.keys(currentKeyframe.pose).forEach((key) => {
                 const k = key as BodyPartType;
@@ -511,7 +493,7 @@ export const exportAnimation = async (
                 });
             });
 
-            // Apply IK
+            // IK
             ['FRONT', 'SIDE', 'TOP'].forEach((view: any) => {
                  Object.entries(attachments).forEach(([boneId, info]) => {
                     const pTransform = interpolatedProps[info.propId][view];
@@ -523,7 +505,8 @@ export const exportAnimation = async (
                             const targetGlobal = transformPoint(spPos.x, spPos.y, pTransform);
                             const chain = IK_CHAINS[boneId];
                             if (chain) {
-                                const ikResult = solveTwoBoneIK(chain.upper, chain.lower, targetGlobal, interpolatedPose, view);
+                                // Pass interpolated Root Pos to IK solver
+                                const ikResult = solveTwoBoneIK(chain.upper, chain.lower, targetGlobal, interpolatedPose, view, interpolatedRootPos[view]);
                                 if (ikResult) {
                                     interpolatedPose[chain.upper][view] = ikResult[chain.upper];
                                     interpolatedPose[chain.lower][view] = ikResult[chain.lower];
@@ -531,7 +514,7 @@ export const exportAnimation = async (
                             }
                             const handBoneDef = getBoneDef(boneId as BodyPartType);
                             if(handBoneDef && handBoneDef.parentId) {
-                                const parentGlobal = getGlobalTransform(handBoneDef.parentId, interpolatedPose, view);
+                                const parentGlobal = getGlobalTransform(handBoneDef.parentId, interpolatedPose, view, interpolatedRootPos[view]);
                                 const offset = info.rotationOffset || 0;
                                 const targetHandGlobal = pTransform.rotation + offset; 
                                 const targetHandLocal = normalizeAngle(targetHandGlobal - parentGlobal.angle);
@@ -545,22 +528,24 @@ export const exportAnimation = async (
             bakedFrames.push({ 
                 time: currentTime, 
                 pose: interpolatedPose, 
+                rootPos: interpolatedRootPos,
                 props: interpolatedProps,
                 activeMuscles: currentKeyframe.activeMuscles || []
             });
             if (currentTime >= totalDuration) break;
             currentTime += SAMPLE_RATE;
-             if (currentTime > totalDuration && currentTime - SAMPLE_RATE < totalDuration) currentTime = totalDuration;
+            if (currentTime > totalDuration && currentTime - SAMPLE_RATE < totalDuration) currentTime = totalDuration;
         }
     } else {
-         // Interpolated Mode: Only Keyframes
+         // Interpolated Mode
          let accumulated = 0;
          keyframes.forEach(kf => {
               const currentProps: any = {};
               props.forEach(p => currentProps[p.id] = kf.propTransforms[p.id]);
               bakedFrames.push({ 
                   time: accumulated, 
-                  pose: kf.pose, 
+                  pose: kf.pose,
+                  rootPos: kf.rootPos || {FRONT:{x:0,y:0}, SIDE:{x:0,y:0}, TOP:{x:0,y:0}},
                   props: currentProps,
                   activeMuscles: kf.activeMuscles || []
                 });
@@ -571,6 +556,7 @@ export const exportAnimation = async (
          bakedFrames.push({ 
              time: totalDuration, 
              pose: keyframes[0].pose, 
+             rootPos: keyframes[0].rootPos || {FRONT:{x:0,y:0}, SIDE:{x:0,y:0}, TOP:{x:0,y:0}},
              props: firstFrameProps,
              activeMuscles: keyframes[0].activeMuscles || []
         });
@@ -586,11 +572,11 @@ export const exportAnimation = async (
       animation: pulse-red 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
     }`;
     
-    // Helper to check if frame B can be skipped (is linear between A and C)
+    // Linear Checkers
     const isLinear = (tA: number, valA: number, tB: number, valB: number, tC: number, valC: number) => {
         const ratio = (tB - tA) / (tC - tA);
         const expected = valA + (valC - valA) * ratio;
-        return Math.abs(valB - expected) < 0.05; // Tolerance
+        return Math.abs(valB - expected) < 0.05; 
     };
     
     const isTransformLinear = (tA: number, tfA: any, tB: number, tfB: any, tC: number, tfC: any) => {
@@ -600,6 +586,10 @@ export const exportAnimation = async (
                (tfA.scaleX === undefined || (isLinear(tA, tfA.scaleX, tB, tfB.scaleX, tC, tfC.scaleX))) &&
                (tfA.scaleY === undefined || (isLinear(tA, tfA.scaleY, tB, tfB.scaleY, tC, tfC.scaleY)));
     };
+    
+    const isTransformLinearCheck = (tA: number, tfA: any, tB: number, tfB: any, tC: number, tfC: any) => {
+        return isTransformLinear(tA, tfA, tB, tfB, tC, tfC);
+    }
 
     viewsToExport.forEach(vObj => {
         const view = vObj.view;
@@ -617,9 +607,9 @@ export const exportAnimation = async (
                     const curr = bakedFrames[i];
                     const next = bakedFrames[i+1];
                     
-                    const tPrev = getGlobalTransform(bone.id, prev.pose, view);
-                    const tCurr = getGlobalTransform(bone.id, curr.pose, view);
-                    const tNext = getGlobalTransform(bone.id, next.pose, view);
+                    const tPrev = getGlobalTransform(bone.id, prev.pose, view, prev.rootPos?.[view]);
+                    const tCurr = getGlobalTransform(bone.id, curr.pose, view, curr.rootPos?.[view]);
+                    const tNext = getGlobalTransform(bone.id, next.pose, view, next.rootPos?.[view]);
 
                     if (!isTransformLinear(prev.time, tPrev, curr.time, tCurr, next.time, tNext)) {
                         keptFrames.push(curr);
@@ -632,7 +622,8 @@ export const exportAnimation = async (
 
             keptFrames.forEach((frame, index) => {
                 const percentage = (frame.time / totalDuration) * 100;
-                const globalT = getGlobalTransform(bone.id, frame.pose, view);
+                // Pass interpolated rootPos
+                const globalT = getGlobalTransform(bone.id, frame.pose, view, frame.rootPos?.[view]);
                 const tx = fmt(globalT.x);
                 const ty = fmt(globalT.y);
                 const rot = fmt(globalT.angle);
@@ -647,27 +638,23 @@ export const exportAnimation = async (
             }
         });
         
-        // -- MUSCLE ACTIVATION ANIMATION (Standard) --
+        // ... Muscle & Prop animation generation remains same ...
         Object.keys(MUSCLE_OVERLAYS).forEach(mKey => {
-            const m = mKey as MuscleGroup;
-            const boneMap = MUSCLE_OVERLAYS[m] as Partial<Record<BodyPartType, Partial<Record<ViewType, string>>>>;
-            if(!boneMap) return;
-            
-            Object.keys(boneMap).forEach(bKey => {
+             const m = mKey as MuscleGroup;
+             const boneMap = MUSCLE_OVERLAYS[m] as Partial<Record<BodyPartType, Partial<Record<ViewType, string>>>>;
+             if(!boneMap) return;
+             Object.keys(boneMap).forEach(bKey => {
                  const boneId = bKey as BodyPartType;
                  const viewOverlay = boneMap[boneId]?.[view];
-                 
                  if(viewOverlay) {
                      const animName = `anim-muscle-${m}-${boneId}-${view}`;
                      let keyframesCss = '';
-                     
                      bakedFrames.forEach(frame => {
                          const percentage = (frame.time / totalDuration) * 100;
                          const isActive = frame.activeMuscles.includes(m);
                          const opacity = isActive ? 1 : 0;
                          keyframesCss += `\n  ${fmt(percentage)}% { opacity: ${opacity}; }`;
                      });
-
                      if (keyframesCss) {
                          css += `\n@keyframes ${animName} {${keyframesCss}\n}`;
                          css += `\n#muscle-group-${m}-${boneId}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; }`;
@@ -675,22 +662,17 @@ export const exportAnimation = async (
                  }
             });
         });
-
-        // -- JOINT ACTIVATION ANIMATION (Shoulders/Glutes) --
-        // Shoulders -> UPPER_ARM_L, UPPER_ARM_R
-        // Glutes -> UPPER_LEG_L, UPPER_LEG_R
+        
         const jointMappings = [
             { muscle: MuscleGroup.SHOULDERS, boneIds: ['UPPER_ARM_L', 'UPPER_ARM_R'] },
             { muscle: MuscleGroup.GLUTES, boneIds: ['UPPER_LEG_L', 'UPPER_LEG_R'] }
         ];
-
         jointMappings.forEach(jm => {
              jm.boneIds.forEach(bid => {
                  const groupId = `joint-active-group-${bid}-${view}`;
                  const animName = `anim-joint-${jm.muscle}-${bid}-${view}`;
                  let keyframesCss = '';
                  let hasActivation = false;
-
                  bakedFrames.forEach(frame => {
                      const percentage = (frame.time / totalDuration) * 100;
                      const isActive = frame.activeMuscles.includes(jm.muscle);
@@ -698,7 +680,6 @@ export const exportAnimation = async (
                      const opacity = isActive ? 1 : 0;
                      keyframesCss += `\n  ${fmt(percentage)}% { opacity: ${opacity}; }`;
                  });
-
                  if (hasActivation && keyframesCss) {
                      css += `\n@keyframes ${animName} {${keyframesCss}\n}`;
                      css += `\n#${groupId} { animation: ${animName} ${totalDuration}ms linear infinite; }`;
@@ -706,23 +687,18 @@ export const exportAnimation = async (
              });
         });
 
-        // -- PROP ANIMATION --
         props.forEach(prop => {
              const animName = `anim-prop-${prop.id}-${view}`;
              let keyframesCss = '';
-             
              let keptFrames = [bakedFrames[0]];
-             
              if (mode === 'adaptive') {
                 for (let i = 1; i < bakedFrames.length - 1; i++) {
                     const prev = keptFrames[keptFrames.length - 1];
                     const curr = bakedFrames[i];
                     const next = bakedFrames[i+1];
-                    
                     const tPrev = prev.props[prop.id][view];
                     const tCurr = curr.props[prop.id][view];
                     const tNext = next.props[prop.id][view];
-
                     if (tPrev && tCurr && tNext) {
                         if (!isTransformLinear(prev.time, tPrev, curr.time, tCurr, next.time, tNext)) {
                             keptFrames.push(curr);
@@ -733,7 +709,6 @@ export const exportAnimation = async (
              } else {
                  keptFrames = bakedFrames;
              }
-
              keptFrames.forEach((frame, index) => {
                  const percentage = (frame.time / totalDuration) * 100;
                  const tr = frame.props[prop.id][view];
@@ -747,7 +722,6 @@ export const exportAnimation = async (
                      keyframesCss += `\n  ${fmt(percentage)}% { transform: ${currentTransform}; }`;
                  }
              });
-             
              if (keyframesCss) {
                 css += `\n@keyframes ${animName} {${keyframesCss}\n}`;
                 css += `\n#prop-${prop.id}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; transform-origin: 0px 0px; }`;
@@ -777,7 +751,6 @@ export const exportAnimation = async (
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        // Sanitize filename
         const safeName = filename.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'animation';
         a.download = `${safeName}.svg`;
         a.click();

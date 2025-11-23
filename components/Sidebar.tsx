@@ -158,6 +158,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const updatePropVariant = (propId: string, variant: 'default' | 'alternate') => {
       setProps(props.map(p => p.id === propId ? { ...p, variant } : p));
   };
+  
+  const updatePropLayer = (propId: string, layer: 'front' | 'back') => {
+      setProps(props.map(p => p.id === propId ? { ...p, layer } : p));
+  };
 
   // Helper to update prop cable config
   const updateCableConfig = (propId: string, showLine: boolean) => {
@@ -490,6 +494,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                              </label>
                         </div>
                     )}
+
+                    {/* Layer Control */}
+                    <div className="bg-gray-800 p-2 rounded border border-gray-600 mb-2">
+                         <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Layering</div>
+                         <label className="flex items-center space-x-2 cursor-pointer">
+                             <input 
+                                type="checkbox" 
+                                checked={activeProp.layer === 'back'}
+                                onChange={(e) => updatePropLayer(activeProp.id, e.target.checked ? 'back' : 'front')}
+                                className="w-3 h-3 rounded text-blue-500 focus:ring-0 bg-gray-700 border-gray-600"
+                             />
+                             <span className="text-xs text-gray-300">Draw Behind Character</span>
+                         </label>
+                    </div>
 
                     {/* Transforms */}
                     <div className="grid grid-cols-2 gap-2">

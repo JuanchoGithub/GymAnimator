@@ -73,6 +73,8 @@ export interface Keyframe {
   id: string;
   duration: number; 
   pose: SkeletonState;
+  // Offset for the ROOT bone (translation)
+  rootPos?: Record<ViewType, { x: number; y: number }>;
   // Prop ID -> View -> Transform
   propTransforms: Record<string, Record<ViewType, PropViewTransform>>;
   activeMuscles: MuscleGroup[];

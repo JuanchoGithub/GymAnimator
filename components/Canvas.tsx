@@ -20,6 +20,8 @@ interface CanvasProps {
     armsInFront: boolean;
     appearance: Appearance;
     activeMuscles: MuscleGroup[];
+    // interpolated or static root pos from App
+    rootPos?: Record<ViewType, {x: number, y: number}>;
     onBoneMouseDown: (id: BodyPartType, e: React.MouseEvent, view: ViewType) => void;
     onPropMouseDown: (e: React.MouseEvent, prop: GymProp, view: ViewType) => void;
     onSvgMouseMove: (e: React.MouseEvent, view: ViewType) => void;
@@ -43,6 +45,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     armsInFront,
     appearance,
     activeMuscles,
+    rootPos,
     onBoneMouseDown,
     onPropMouseDown,
     onSvgMouseMove,
@@ -54,6 +57,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   
   const renderViewport = (view: ViewType, label: string, slotIndex: number = -1, showControls: boolean = false) => {
       const isActive = activeView === view;
+      const currentViewRootPos = rootPos ? rootPos[view] : undefined;
 
       const renderProp = (prop: GymProp) => {
           const isSelected = selectedPropId === prop.id;
@@ -143,6 +147,12 @@ export const Canvas: React.FC<CanvasProps> = ({
           );
       };
 
+      // Determine Back vs Front props
+      // Use prop.layer property strictly
+      const isBackProp = (p: GymProp) => {
+          return p.layer === 'back';
+      };
+
       return (
         <div 
             id={`viewport-${view}`}
@@ -174,7 +184,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                 )}
             </div>
             
-            {/* Grid Background - Only show if not transparent background, or if explicit grid toggle exists. For now, hide if transparent to allow clean export/view */}
+            {/* Grid Background */}
             {appearance.backgroundColor !== 'transparent' && (
                 <div className="absolute inset-0 pointer-events-none opacity-30"
                     style={{ backgroundImage: 'radial-gradient(#6b7280 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
@@ -193,7 +203,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                 onMouseLeave={onSvgMouseUp}
             >
                  {/* Render Props (Back) */}
-                {props.filter(p => p.layer === 'back').map(renderProp)}
+                {props.filter(p => isBackProp(p)).map(renderProp)}
 
                 <Character 
                     pose={currentPose}
@@ -206,10 +216,11 @@ export const Canvas: React.FC<CanvasProps> = ({
                     armsInFront={armsInFront}
                     appearance={appearance}
                     activeMuscles={activeMuscles}
+                    rootPos={currentViewRootPos}
                 />
 
                  {/* Render Props (Front) */}
-                {props.filter(p => p.layer !== 'back').map(renderProp)}
+                {props.filter(p => !isBackProp(p)).map(renderProp)}
             </svg>
         </div>
       );

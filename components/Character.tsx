@@ -13,6 +13,7 @@ interface CharacterProps {
   armsInFront?: boolean;
   appearance?: Appearance;
   activeMuscles?: MuscleGroup[];
+  rootPos?: { x: number, y: number }; // New Prop for Root Offset
 }
 
 const Character: React.FC<CharacterProps> = ({ 
@@ -30,7 +31,8 @@ const Character: React.FC<CharacterProps> = ({
       hairColor: "#111827",
       backgroundColor: "#111827"
   },
-  activeMuscles = []
+  activeMuscles = [],
+  rootPos
 }) => {
   
   // Helper to resolve color based on body part type
@@ -63,8 +65,8 @@ const Character: React.FC<CharacterProps> = ({
 
   // Calculate render list
   const renderItems = SKELETON_DEF.map(bone => {
-      // Calculate Global Transform for this bone
-      const transform = getGlobalTransform(bone.id, pose, view);
+      // Calculate Global Transform for this bone, passing rootPos if available
+      const transform = getGlobalTransform(bone.id, pose, view, rootPos);
       
       // Determine Z-index
       let zIndex = bone.views[view]?.zIndex || 0;
@@ -117,7 +119,6 @@ const Character: React.FC<CharacterProps> = ({
             if (bone.id.includes('LOWER_LEG')) {
                 jointColor = appearance.pantsColor;
             }
-            // Removed LOWER_ARM override so elbow uses bone color (skin)
           }
 
           return (

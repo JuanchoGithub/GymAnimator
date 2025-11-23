@@ -368,8 +368,7 @@ export const exportAnimation = async (
                 
                 // For joint circles (Shoulders, Glutes), preserve the element but strip the pulse class
                 if (node.tagName === 'circle' && cls.includes('animate-pulse')) {
-                     // ID injection happens below in bone loop, here just strip the class to reset state
-                     // Do not remove node!
+                     // Logic handled in injection loop below
                 }
             });
 
@@ -405,14 +404,34 @@ export const exportAnimation = async (
                     if (bone.id.includes('UPPER_ARM') || bone.id.includes('UPPER_LEG')) {
                         const jointCircle = boneGroup.querySelector('circle');
                         if (jointCircle) {
-                             const jointId = `joint-${bone.id}-${v.view}`;
-                             jointCircle.setAttribute('id', jointId);
-                             
-                             // Reset fill to base color (clean slate from snapshot)
+                             // Reset base circle to base color
                              let baseColor = bone.color;
                              if (bone.id.includes('UPPER_ARM')) baseColor = appearance.skinColor;
                              if (bone.id.includes('UPPER_LEG')) baseColor = appearance.pantsColor;
                              jointCircle.setAttribute('fill', baseColor);
+                             jointCircle.removeAttribute('id');
+                             jointCircle.removeAttribute('class');
+
+                             // Create wrapper group for active state
+                             const activeGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                             activeGroup.setAttribute("id", `joint-active-group-${bone.id}-${v.view}`);
+                             activeGroup.setAttribute("opacity", "0"); // Hidden by default
+
+                             // Create pulsing overlay circle
+                             const pulseCircle = jointCircle.cloneNode(true) as SVGCircleElement;
+                             pulseCircle.setAttribute("class", "muscle-pulse");
+                             pulseCircle.setAttribute("fill", "#ef4444");
+                             pulseCircle.removeAttribute("id");
+                             pulseCircle.setAttribute("stroke", "none");
+                             
+                             activeGroup.appendChild(pulseCircle);
+                             
+                             // Insert after original joint circle so it overlays it
+                             if (jointCircle.nextSibling) {
+                                 jointCircle.parentNode?.insertBefore(activeGroup, jointCircle.nextSibling);
+                             } else {
+                                 jointCircle.parentNode?.appendChild(activeGroup);
+                             }
                         }
                     }
                 }
@@ -661,14 +680,13 @@ export const exportAnimation = async (
         // Shoulders -> UPPER_ARM_L, UPPER_ARM_R
         // Glutes -> UPPER_LEG_L, UPPER_LEG_R
         const jointMappings = [
-            { muscle: MuscleGroup.SHOULDERS, boneIds: ['UPPER_ARM_L', 'UPPER_ARM_R'], baseColor: appearance.skinColor },
-            { muscle: MuscleGroup.GLUTES, boneIds: ['UPPER_LEG_L', 'UPPER_LEG_R'], baseColor: appearance.pantsColor }
+            { muscle: MuscleGroup.SHOULDERS, boneIds: ['UPPER_ARM_L', 'UPPER_ARM_R'] },
+            { muscle: MuscleGroup.GLUTES, boneIds: ['UPPER_LEG_L', 'UPPER_LEG_R'] }
         ];
 
         jointMappings.forEach(jm => {
              jm.boneIds.forEach(bid => {
-                 const jointId = `joint-${bid}-${view}`;
-                 // We iterate through generated IDs. Even if element doesn't exist (e.g. different view), CSS is harmless.
+                 const groupId = `joint-active-group-${bid}-${view}`;
                  const animName = `anim-joint-${jm.muscle}-${bid}-${view}`;
                  let keyframesCss = '';
                  let hasActivation = false;
@@ -677,13 +695,13 @@ export const exportAnimation = async (
                      const percentage = (frame.time / totalDuration) * 100;
                      const isActive = frame.activeMuscles.includes(jm.muscle);
                      if (isActive) hasActivation = true;
-                     const color = isActive ? '#ef4444' : jm.baseColor;
-                     keyframesCss += `\n  ${fmt(percentage)}% { fill: ${color}; }`;
+                     const opacity = isActive ? 1 : 0;
+                     keyframesCss += `\n  ${fmt(percentage)}% { opacity: ${opacity}; }`;
                  });
 
                  if (hasActivation && keyframesCss) {
                      css += `\n@keyframes ${animName} {${keyframesCss}\n}`;
-                     css += `\n#${jointId} { animation: ${animName} ${totalDuration}ms linear infinite; }`;
+                     css += `\n#${groupId} { animation: ${animName} ${totalDuration}ms linear infinite; }`;
                  }
              });
         });

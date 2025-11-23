@@ -374,12 +374,19 @@ export const exportAnimation = async (
                         const overlayPath = overlays[bone.id]?.[v.view];
                         
                         if (overlayPath) {
+                             // Create a group to handle the On/Off timeline animation
+                             const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                             group.setAttribute("id", `muscle-group-${m}-${bone.id}-${v.view}`);
+                             group.setAttribute("opacity", "0"); // Default to hidden
+
+                             // Create the path inside the group to handle the continuous pulse
                              const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-                             path.setAttribute("id", `muscle-${m}-${bone.id}-${v.view}`);
                              path.setAttribute("d", overlayPath);
                              path.setAttribute("fill", "#ef4444");
-                             path.setAttribute("opacity", "0"); // Default to hidden, CSS will animate this
-                             boneGroup.appendChild(path);
+                             path.setAttribute("class", "muscle-pulse");
+                             
+                             group.appendChild(path);
+                             boneGroup.appendChild(group);
                         }
                     });
                 }
@@ -525,7 +532,14 @@ export const exportAnimation = async (
     }
 
     // 4. Generate CSS
-    let css = '';
+    let css = `
+    @keyframes pulse-red {
+      0%, 100% { fill: #ef4444; opacity: 1; }
+      50% { fill: #991b1b; opacity: 0.8; }
+    }
+    .muscle-pulse {
+      animation: pulse-red 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }`;
     
     // Helper to check if frame B can be skipped (is linear between A and C)
     const isLinear = (tA: number, valA: number, tB: number, valB: number, tC: number, valC: number) => {
@@ -606,13 +620,14 @@ export const exportAnimation = async (
                      bakedFrames.forEach(frame => {
                          const percentage = (frame.time / totalDuration) * 100;
                          const isActive = frame.activeMuscles.includes(m);
-                         const opacity = isActive ? 0.9 : 0;
+                         const opacity = isActive ? 1 : 0; // Full opacity when active, pulse handles fluctuation
                          keyframesCss += `\n  ${fmt(percentage)}% { opacity: ${opacity}; }`;
                      });
 
                      if (keyframesCss) {
                          css += `\n@keyframes ${animName} {${keyframesCss}\n}`;
-                         css += `\n#muscle-${m}-${boneId}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; }`;
+                         // Target the GROUP for On/Off visibility
+                         css += `\n#muscle-group-${m}-${boneId}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; }`;
                      }
                  }
             });

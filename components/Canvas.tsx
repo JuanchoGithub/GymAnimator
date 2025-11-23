@@ -150,7 +150,15 @@ export const Canvas: React.FC<CanvasProps> = ({
       // Determine Back vs Front props
       // Use prop.layer property strictly
       const isBackProp = (p: GymProp) => {
-          return p.layer === 'back';
+          if (p.layer === 'back') {
+              // Specific rule for Barbells: Only back in FRONT view (e.g. Back Squat)
+              // In Side/Top view, the bar usually clips or sits on top/middle, so rendering behind might hide it completely behind torso
+              if (p.propType === 'BARBELL') {
+                  return view === 'FRONT';
+              }
+              return true;
+          }
+          return false;
       };
 
       return (

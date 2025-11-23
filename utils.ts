@@ -1,6 +1,6 @@
 
-import { BodyPartType, SkeletonState, GymProp, Keyframe, PropViewTransform, ViewType, LayoutMode, SnapPoint } from "./types";
-import { SKELETON_DEF, IK_CHAINS } from "./constants";
+import { BodyPartType, SkeletonState, GymProp, Keyframe, PropViewTransform, ViewType, LayoutMode, SnapPoint, MuscleGroup } from "./types";
+import { SKELETON_DEF, IK_CHAINS, MUSCLE_OVERLAYS } from "./constants";
 
 // --- Geometry Helpers ---
 
@@ -331,7 +331,7 @@ export const exportAnimation = async (
             allElements.forEach((node: Element) => {
                 const cls = node.getAttribute('class') || '';
 
-                // Remove selection artifacts
+                // Remove selection artifacts and existing muscle pulses (we re-inject them for full animation support)
                 if (cls.includes('animate-pulse')) {
                     node.remove();
                     return;
@@ -362,6 +362,28 @@ export const exportAnimation = async (
                 node.removeAttribute('onmousemove');
                 node.removeAttribute('onmouseup');
             });
+
+            // Inject Muscle Paths (Invisible by default, animated via CSS)
+            SKELETON_DEF.forEach(bone => {
+                const boneGroup = svg.querySelector(`#bone-${bone.id}-${v.view}`);
+                if (boneGroup) {
+                    Object.entries(MUSCLE_OVERLAYS).forEach(([muscle, boneMap]) => {
+                        const m = muscle as MuscleGroup;
+                        // Type safe access to overlay definition
+                        const overlays = boneMap as Partial<Record<BodyPartType, Partial<Record<ViewType, string>>>>;
+                        const overlayPath = overlays[bone.id]?.[v.view];
+                        
+                        if (overlayPath) {
+                             const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                             path.setAttribute("id", `muscle-${m}-${bone.id}-${v.view}`);
+                             path.setAttribute("d", overlayPath);
+                             path.setAttribute("fill", "#ef4444");
+                             path.setAttribute("opacity", "0"); // Default to hidden, CSS will animate this
+                             boneGroup.appendChild(path);
+                        }
+                    });
+                }
+            });
             
             svgContentInner += `<g transform="translate(${v.x + v.ox}, ${v.y + v.oy}) scale(${v.scale})">\n`;
             
@@ -377,7 +399,12 @@ export const exportAnimation = async (
 
     // 3. Generate Animation CSS
     const totalDuration = keyframes.reduce((sum, k) => sum + k.duration, 0);
-    const bakedFrames: { time: number; pose: SkeletonState; props: Record<string, Record<ViewType, PropViewTransform>> }[] = [];
+    const bakedFrames: { 
+        time: number; 
+        pose: SkeletonState; 
+        props: Record<string, Record<ViewType, PropViewTransform>>;
+        activeMuscles: MuscleGroup[];
+    }[] = [];
     
     const SAMPLE_RATE = 50; 
     
@@ -463,7 +490,12 @@ export const exportAnimation = async (
                 });
             });
 
-            bakedFrames.push({ time: currentTime, pose: interpolatedPose, props: interpolatedProps });
+            bakedFrames.push({ 
+                time: currentTime, 
+                pose: interpolatedPose, 
+                props: interpolatedProps,
+                activeMuscles: currentKeyframe.activeMuscles || []
+            });
             if (currentTime >= totalDuration) break;
             currentTime += SAMPLE_RATE;
              if (currentTime > totalDuration && currentTime - SAMPLE_RATE < totalDuration) currentTime = totalDuration;
@@ -474,12 +506,22 @@ export const exportAnimation = async (
          keyframes.forEach(kf => {
               const currentProps: any = {};
               props.forEach(p => currentProps[p.id] = kf.propTransforms[p.id]);
-              bakedFrames.push({ time: accumulated, pose: kf.pose, props: currentProps });
+              bakedFrames.push({ 
+                  time: accumulated, 
+                  pose: kf.pose, 
+                  props: currentProps,
+                  activeMuscles: kf.activeMuscles || []
+                });
               accumulated += kf.duration;
          });
          const firstFrameProps: any = {};
          props.forEach(p => firstFrameProps[p.id] = keyframes[0].propTransforms[p.id]);
-         bakedFrames.push({ time: totalDuration, pose: keyframes[0].pose, props: firstFrameProps });
+         bakedFrames.push({ 
+             time: totalDuration, 
+             pose: keyframes[0].pose, 
+             props: firstFrameProps,
+             activeMuscles: keyframes[0].activeMuscles || []
+        });
     }
 
     // 4. Generate CSS
@@ -502,13 +544,14 @@ export const exportAnimation = async (
 
     viewsToExport.forEach(vObj => {
         const view = vObj.view;
+        
+        // -- BONE ANIMATION --
         SKELETON_DEF.forEach(bone => {
             const animName = `anim-bone-${bone.id}-${view}`;
             let keyframesCss = '';
             
             let keptFrames = [bakedFrames[0]];
             
-            // Only run adaptive reduction if requested
             if (mode === 'adaptive') {
                 for (let i = 1; i < bakedFrames.length - 1; i++) {
                     const prev = keptFrames[keptFrames.length - 1];
@@ -519,9 +562,6 @@ export const exportAnimation = async (
                     const tCurr = getGlobalTransform(bone.id, curr.pose, view);
                     const tNext = getGlobalTransform(bone.id, next.pose, view);
 
-                    // If current frame is NOT linear between prev and next, we must keep it.
-                    // Note: "prev" here implies we check against the last KEPT frame, 
-                    // which is essential for reducing long linear chains.
                     if (!isTransformLinear(prev.time, tPrev, curr.time, tCurr, next.time, tNext)) {
                         keptFrames.push(curr);
                     }
@@ -539,8 +579,6 @@ export const exportAnimation = async (
                 const rot = fmt(globalT.angle);
                 const currentTransform = `translate(${tx}px, ${ty}px) rotate(${rot}deg)`;
                 
-                // Simple deduplication for adjacent identical frames is good for 'accurate' mode too
-                // But 'adaptive' does it better.
                 keyframesCss += `\n  ${fmt(percentage)}% { transform: ${currentTransform}; }`;
             });
 
@@ -549,7 +587,38 @@ export const exportAnimation = async (
                 css += `\n#bone-${bone.id}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; transform-origin: 0px 0px; }`;
             }
         });
+        
+        // -- MUSCLE ACTIVATION ANIMATION --
+        Object.keys(MUSCLE_OVERLAYS).forEach(mKey => {
+            const m = mKey as MuscleGroup;
+            const boneMap = MUSCLE_OVERLAYS[m] as Partial<Record<BodyPartType, Partial<Record<ViewType, string>>>>;
+            if(!boneMap) return;
+            
+            Object.keys(boneMap).forEach(bKey => {
+                 const boneId = bKey as BodyPartType;
+                 const viewOverlay = boneMap[boneId]?.[view];
+                 
+                 if(viewOverlay) {
+                     const animName = `anim-muscle-${m}-${boneId}-${view}`;
+                     let keyframesCss = '';
+                     
+                     // For muscles, we rely on baked frames to capture the discrete active state
+                     bakedFrames.forEach(frame => {
+                         const percentage = (frame.time / totalDuration) * 100;
+                         const isActive = frame.activeMuscles.includes(m);
+                         const opacity = isActive ? 0.9 : 0;
+                         keyframesCss += `\n  ${fmt(percentage)}% { opacity: ${opacity}; }`;
+                     });
 
+                     if (keyframesCss) {
+                         css += `\n@keyframes ${animName} {${keyframesCss}\n}`;
+                         css += `\n#muscle-${m}-${boneId}-${view} { animation: ${animName} ${totalDuration}ms linear infinite; }`;
+                     }
+                 }
+            });
+        });
+
+        // -- PROP ANIMATION --
         props.forEach(prop => {
              const animName = `anim-prop-${prop.id}-${view}`;
              let keyframesCss = '';
